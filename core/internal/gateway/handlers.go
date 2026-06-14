@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 	"tollgate/internal/agent"
 	"tollgate/internal/audit"
@@ -16,8 +17,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// Deps holds every module the handlers need. Passed to NewServer and
-// threaded through to each handler. All fields are required.
+// Deps holds every module the handlers need.
 type Deps struct {
 	Config        configProvider
 	PolicyEngine  *policy.Engine
@@ -25,33 +25,26 @@ type Deps struct {
 	AuditDB       *audit.DB
 	AgentRegistry *agent.Registry
 	RateLimiter   *ratelimit.Limiter
-	Baseline      baselineRecorder
 	TTLSeconds    int
+	MinTTLSeconds int // ApprovalTokenMinRemainingSeconds from config
 	DryRun        bool
 }
 
-// configProvider gives handlers access to safe config values.
 type configProvider interface {
 	IsProduction() bool
 	IsDryRun() bool
-}
-
-// baselineRecorder is the subset of the baseline Scorer used by handlers.
-type baselineRecorder interface {
-	Record(agentID, destination string, amountUSD float64)
+	GetTier2VetoWindowSeconds() int
 }
 
 // handlers owns all HTTP handler functions.
+// cfg removed — all config access via deps.Config.
 type handlers struct {
-	cfg  configProvider
 	deps Deps
 	log  *zap.Logger
 }
 
 // ── POST /v1/action-check ─────────────────────────────────────────────────────
 
-// actionCheckRequest is the JSON body expected from an AI agent.
-// Every field is required — missing any field returns 400.
 type actionCheckRequest struct {
 	AgentID     string  `json:"agent_id"`
 	Action      string  `json:"action"`
@@ -64,26 +57,24 @@ type actionCheckRequest struct {
 	Timestamp   string  `json:"timestamp"` // RFC3339
 }
 
-// actionCheckResponse is the JSON body returned to the agent.
+// actionCheckResponse status values:
+//
+//	"approved"                   Tier 1 — token ready to submit
+//	"approved_with_notification" Tier 2 — token ready, notification sent, veto open
+//	"pending_human"              Tier 3 — poll /v1/decision/:id
+//	"denied"                     rejected
 type actionCheckResponse struct {
-	Status     string                 `json:"status"` // "approved" | "denied" | "pending_human"
-	DecisionID string                 `json:"decision_id"`
-	Token      *signing.ApprovalToken `json:"approval_token,omitempty"` // nil if not approved
-	Code       string                 `json:"code,omitempty"`           // denial code
-	Message    string                 `json:"message,omitempty"`        // denial reason
+	Status              string                 `json:"status"`
+	DecisionID          string                 `json:"decision_id"`
+	Tier                int                    `json:"tier,omitempty"`
+	Token               *signing.ApprovalToken `json:"approval_token,omitempty"`
+	Code                string                 `json:"code,omitempty"`
+	Message             string                 `json:"message,omitempty"`
+	VetoWindowSeconds   int                    `json:"veto_window_seconds,omitempty"`
+	PollURL             string                 `json:"poll_url,omitempty"`
+	PollIntervalSeconds int                    `json:"poll_interval_seconds,omitempty"`
 }
 
-// actionCheck is the main endpoint. Every AI financial request comes here first.
-//
-// Full request lifecycle (wall-clock order):
-//  1. Method + Content-Type check
-//  2. Agent auth (HMAC verify + revocation + per-agent rate limit)
-//  3. JSON decode + field validation
-//  4. Policy engine evaluation (11 checks)
-//  5. If approved → build + sign Approval Token
-//  6. Write audit record (MUST succeed before response is sent)
-//  7. Update behavioral baseline (async)
-//  8. Return response
 func (h *handlers) actionCheck(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
@@ -92,13 +83,11 @@ func (h *handlers) actionCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ── Step 2: Auth ──────────────────────────────────────────────────────────
 	agentID, _, ok := authenticateRequest(w, r, h.deps)
 	if !ok {
 		return
 	}
 
-	// ── Step 3: Decode + validate ─────────────────────────────────────────────
 	var req actionCheckRequest
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
@@ -106,12 +95,10 @@ func (h *handlers) actionCheck(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
 	if err := validateActionRequest(req, agentID); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-
 	ts, err := time.Parse(time.RFC3339, req.Timestamp)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "timestamp must be RFC3339 format")
@@ -130,20 +117,24 @@ func (h *handlers) actionCheck(w http.ResponseWriter, r *http.Request) {
 		Timestamp:   ts,
 	}
 
-	// ── Step 4: Policy engine evaluation ─────────────────────────────────────
+	// Policy engine runs all 12 checks including baseline scoring and tier routing.
+	// baseline.Record() is called INSIDE the engine — do NOT call it again here.
 	result := h.deps.PolicyEngine.Evaluate(policyReq)
 
 	decisionID := uuid.New().String()
 
-	// ── Step 5: Build + sign Approval Token (if approved) ────────────────────
+	// Build + sign token for Tier 1 and Tier 2 approvals.
 	var token *signing.ApprovalToken
-
 	if result.Decision == policy.DecisionApproved {
 		if h.deps.DryRun {
-			// DRY RUN: build a dummy token without a real signature.
+			// 65-byte zero signature — valid length, cryptographically invalid.
+			// The Guard will correctly reject it if someone submits it.
 			token = &signing.ApprovalToken{
 				TokenID:       uuid.New().String(),
 				AgentID:       req.AgentID,
+				Tier:          result.Tier,
+				AutoApproved:  result.AutoApproved,
+				Action:        req.Action,
 				Destination:   req.Destination,
 				AmountUSD:     req.AmountUSD,
 				AmountRaw:     req.AmountRaw,
@@ -155,51 +146,53 @@ func (h *handlers) actionCheck(w http.ResponseWriter, r *http.Request) {
 				PolicyVersion: result.PolicyVersion,
 				PolicyHash:    result.PolicyHash,
 				RiskScore:     result.RiskScore,
-				AutoApproved:  result.AutoApproved,
-				Signature:     "0x" + "00",
+				Signature:     "0x" + strings.Repeat("00", 65),
 			}
 		} else {
 			token, err = h.deps.Signer.BuildApprovalToken(signing.BuildRequest{
-				AgentID:       req.AgentID,
-				PolicyVersion: result.PolicyVersion,
-				PolicyHash:    result.PolicyHash,
-				Action:        req.Action,
-				Destination:   req.Destination,
-				AmountUSD:     req.AmountUSD,
-				AmountRaw:     req.AmountRaw,
-				Purpose:       req.Purpose,
-				ChainID:       req.ChainID,
-				Nonce:         req.Nonce,
-				TTLSeconds:    h.deps.TTLSeconds,
-				RiskScore:     result.RiskScore,
-				AutoApproved:  result.AutoApproved,
+				AgentID:             req.AgentID,
+				PolicyVersion:       result.PolicyVersion,
+				PolicyHash:          result.PolicyHash,
+				Tier:                result.Tier,
+				AutoApproved:        result.AutoApproved,
+				Action:              req.Action,
+				Destination:         req.Destination,
+				AmountUSD:           req.AmountUSD,
+				AmountRaw:           req.AmountRaw,
+				Purpose:             req.Purpose,
+				ChainID:             req.ChainID,
+				Nonce:               req.Nonce,
+				TTLSeconds:          h.deps.TTLSeconds,
+				MinRemainingSeconds: h.deps.MinTTLSeconds,
+				RiskScore:           result.RiskScore,
 			})
 			if err != nil {
 				h.log.Error("failed to build approval token — denying",
 					zap.String("agent_id", req.AgentID),
+					zap.String("decision_id", decisionID),
 					zap.Error(err),
 				)
-				// Signing failure → deny. Never return an unsigned approval.
 				result = policy.EvaluationResult{
-					Decision:      policy.DecisionDenied,
-					DenialCode:    policy.CodeInternalError,
-					DenialReason:  "Internal signing error.",
-					PolicyVersion: result.PolicyVersion,
-					PolicyHash:    result.PolicyHash,
+					Decision:       policy.DecisionDenied,
+					DenialCode:     policy.CodeInternalError,
+					DenialReason:   "Internal signing error.",
+					PolicyVersion:  result.PolicyVersion,
+					PolicyHash:     result.PolicyHash,
+					NonceExpiresAt: result.NonceExpiresAt,
 				}
 				token = nil
 			}
 		}
 	}
 
-	// ── Step 6: Write audit record ────────────────────────────────────────────
-	// SECURITY: If this write fails, the response is DENIED regardless of the
-	// policy decision. An approval without an audit record does not exist.
+	// WriteDecision atomically writes nonce + decision in one DB transaction.
+	// SECURITY: if this fails, response MUST be denial regardless of policy result.
 	auditRec := audit.DecisionRecord{
 		ID:            decisionID,
 		RequestID:     requestIDFromContext(r.Context()),
 		AgentID:       req.AgentID,
 		Decision:      string(result.Decision),
+		Tier:          result.Tier,
 		DenialCode:    result.DenialCode,
 		DenialReason:  result.DenialReason,
 		Action:        req.Action,
@@ -218,48 +211,164 @@ func (h *handlers) actionCheck(w http.ResponseWriter, r *http.Request) {
 		auditRec.TokenExpiresAt = token.ExpiresAt
 	}
 
-	if err := h.deps.AuditDB.WriteDecision(auditRec); err != nil {
+	if err := h.deps.AuditDB.WriteDecision(auditRec, result.NonceExpiresAt); err != nil {
 		h.log.Error("audit write failed — converting approval to denial",
 			zap.String("agent_id", req.AgentID),
 			zap.String("decision_id", decisionID),
 			zap.Error(err),
 		)
-		// Audit failure → deny. No exceptions.
-		resp := actionCheckResponse{
+		writeJSON(w, mustMarshal(actionCheckResponse{
 			Status:     string(policy.DecisionDenied),
 			DecisionID: decisionID,
 			Code:       policy.CodeInternalError,
-			Message:    "Internal error — decision could not be recorded.",
-		}
-		body, _ := json.Marshal(resp)
-		writeJSON(w, body)
+			Message:    "Decision could not be recorded.",
+		}))
 		return
 	}
 
-	// ── Step 7: Update behavioral baseline (async) ────────────────────────────
-	// Only record approved transactions — baseline reflects real behavior.
-	// Async so it never delays the response.
-	if result.Decision == policy.DecisionApproved {
-		go h.deps.Baseline.Record(req.AgentID, req.Destination, req.AmountUSD)
-	}
+	h.log.Info("action decision",
+		zap.String("agent_id", req.AgentID),
+		zap.String("decision_id", decisionID),
+		zap.String("decision", string(result.Decision)),
+		zap.Int("tier", result.Tier),
+		zap.Float64("amount_usd", req.AmountUSD),
+		zap.Float64("risk_score", result.RiskScore),
+	)
 
-	// ── Step 8: Return response ───────────────────────────────────────────────
+	writeJSON(w, mustMarshal(buildActionResponse(
+		result,
+		decisionID,
+		token,
+		h.deps.Config.GetTier2VetoWindowSeconds(), // Pass config value
+	)))
+}
+
+// buildActionResponse constructs the tier-specific HTTP response body.
+func buildActionResponse(
+	result policy.EvaluationResult,
+	decisionID string,
+	token *signing.ApprovalToken,
+	tier2VetoWindowSeconds int,
+) actionCheckResponse {
 	resp := actionCheckResponse{
-		Status:     string(result.Decision),
 		DecisionID: decisionID,
-		Token:      token,
-		Code:       result.DenialCode,
-		Message:    result.DenialReason,
+		Tier:       result.Tier,
 	}
 
-	body, err := json.Marshal(resp)
+	switch result.Decision {
+	case policy.DecisionApproved:
+		if result.Tier == 2 {
+			resp.Status = "approved_with_notification"
+			resp.Token = token
+			resp.VetoWindowSeconds = tier2VetoWindowSeconds // Use parameter
+		} else {
+			resp.Status = string(policy.DecisionApproved)
+			resp.Token = token
+		}
+	case policy.DecisionPendingHuman:
+		resp.Status = string(policy.DecisionPendingHuman)
+		resp.PollURL = fmt.Sprintf("/v1/decision/%s", decisionID)
+		resp.PollIntervalSeconds = 3
+	case policy.DecisionDenied:
+		resp.Status = string(policy.DecisionDenied)
+		resp.Code = result.DenialCode
+		resp.Message = safeDenialMessage(result.DenialCode)
+	}
+
+	return resp
+}
+
+// safeDenialMessage returns a caller-safe message — never exposes internal state.
+func safeDenialMessage(code string) string {
+	switch code {
+	case policy.CodeRequestExpired:
+		return "Request timestamp is too old. Please retry with a current timestamp."
+	case policy.CodeNonceReplay:
+		return "This request has already been processed."
+	case policy.CodeAgentUnknown:
+		return "Agent is not registered."
+	case policy.CodeAgentDisabled:
+		return "Agent is currently disabled."
+	case policy.CodePurposeMismatch:
+		return "Requested purpose is not permitted for this agent."
+	case policy.CodeDestinationBlocked:
+		return "Destination address is not permitted."
+	case policy.CodeDestinationNotAllowed:
+		return "Destination address is not on the allow list."
+	case policy.CodeExceedsTransactionLimit:
+		return "Transaction amount exceeds the per-transaction limit."
+	case policy.CodeExceedsHourlyLimit:
+		return "Transaction would exceed the hourly spend limit."
+	case policy.CodeExceedsDailyLimit:
+		return "Transaction would exceed the daily spend limit."
+	case policy.CodeBehavioralAnomaly:
+		return "Request was flagged as anomalous and denied."
+	case policy.CodeColdStartProtection:
+		return "Agent requires human approval until behavioral baseline is established."
+	case policy.CodeZeroAmount:
+		return "Zero or negative amount transactions are not permitted."
+	case policy.CodePolicyUnavailable:
+		return "Policy is temporarily unavailable. Please retry shortly."
+	default:
+		return "Request denied."
+	}
+}
+
+// ── GET /v1/decision/:id ──────────────────────────────────────────────────────
+
+type decisionPollResponse struct {
+	DecisionID string                 `json:"decision_id"`
+	Status     string                 `json:"status"`
+	Token      *signing.ApprovalToken `json:"approval_token,omitempty"`
+	Code       string                 `json:"code,omitempty"`
+	Message    string                 `json:"message,omitempty"`
+}
+
+func (h *handlers) decisionPoll(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	agentID, _, ok := authenticateRequest(w, r, h.deps)
+	if !ok {
+		return
+	}
+
+	decisionID := strings.TrimPrefix(r.URL.Path, "/v1/decision/")
+	if decisionID == "" {
+		writeError(w, http.StatusBadRequest, "decision_id is required")
+		return
+	}
+
+	rec, err := h.deps.AuditDB.GetDecision(decisionID)
 	if err != nil {
-		h.log.Error("failed to marshal response", zap.Error(err))
+		h.log.Error("decisionPoll: DB lookup failed",
+			zap.String("decision_id", decisionID),
+			zap.Error(err),
+		)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	if rec == nil {
+		writeError(w, http.StatusNotFound, "decision not found")
+		return
+	}
 
-	writeJSON(w, body)
+	// SECURITY: only the submitting agent can poll its own decision.
+	if rec.AgentID != agentID {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	resp := decisionPollResponse{
+		DecisionID: decisionID,
+		Status:     rec.Decision,
+	}
+	if rec.Decision == string(policy.DecisionDenied) {
+		resp.Code = rec.DenialCode
+		resp.Message = safeDenialMessage(rec.DenialCode)
+	}
+
+	writeJSON(w, mustMarshal(resp))
 }
 
 // ── GET /v1/health ────────────────────────────────────────────────────────────
@@ -278,28 +387,30 @@ func (h *handlers) health(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, policyHash, policyLoaded := h.deps.PolicyEngine.LoaderStatus()
+	policyStatus := h.deps.PolicyEngine.Status(h.deps.DryRun)
 	dbOK := h.deps.AuditDB.Ping() == nil
 
-	status := "ok"
-	if !policyLoaded || !dbOK {
-		status = "degraded"
+	overallStatus := "ok"
+	if !policyStatus.PolicyValid || !dbOK {
+		overallStatus = "degraded"
 	}
 
-	resp := healthResponse{
-		Status:  status,
-		Version: "1.0.0",
+	writeJSON(w, mustMarshal(healthResponse{
+		Status:  overallStatus,
+		Version: "1.0.1",
 		Checks: map[string]interface{}{
-			"policy_loaded":  policyLoaded,
-			"policy_hash":    policyHash,
-			"signing_key_ok": true, // if signer booted, key is valid
-			"audit_db_ok":    dbOK,
+			"policy_valid":         policyStatus.PolicyValid,
+			"policy_version":       policyStatus.PolicyVersion,
+			"policy_hash":          policyStatus.PolicyHash,
+			"agent_count":          policyStatus.AgentCount,
+			"last_reload_at":       policyStatus.LastReloadAt,
+			"dry_run_mode":         policyStatus.DryRunMode,
+			"signing_key_ok":       true,
+			"audit_db_ok":          dbOK,
+			"active_rate_limiters": h.deps.RateLimiter.AgentCount(),
 		},
 		UptimeSeconds: int64(time.Since(serverStart).Seconds()),
-	}
-
-	body, _ := json.Marshal(resp)
-	writeJSON(w, body)
+	}))
 }
 
 // ── POST /v1/agent/revoke ─────────────────────────────────────────────────────
@@ -317,9 +428,7 @@ func (h *handlers) revokeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Revoke endpoint requires auth — any valid agent token can revoke.
-	// In production this would require a separate admin token.
-	_, _, ok := authenticateRequest(w, r, h.deps)
+	callerAgentID, _, ok := authenticateRequest(w, r, h.deps)
 	if !ok {
 		return
 	}
@@ -334,35 +443,35 @@ func (h *handlers) revokeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.deps.AgentRegistry.RevokeToken(req.TokenID, "unknown", req.Reason); err != nil {
-		h.log.Error("revocation failed", zap.String("token_id", req.TokenID), zap.Error(err))
+	// Pass the authenticated caller's agentID for complete audit records.
+	if err := h.deps.AgentRegistry.RevokeToken(req.TokenID, callerAgentID, req.Reason); err != nil {
+		h.log.Error("revocation failed",
+			zap.String("token_id", req.TokenID),
+			zap.String("caller_agent_id", callerAgentID),
+			zap.Error(err),
+		)
 		writeError(w, http.StatusInternalServerError, "revocation failed")
 		return
 	}
 
 	h.log.Warn("token revoked via API",
 		zap.String("token_id", req.TokenID),
+		zap.String("caller_agent_id", callerAgentID),
 		zap.String("reason", req.Reason),
 	)
 
-	body, _ := json.Marshal(map[string]string{
+	writeJSON(w, mustMarshal(map[string]string{
 		"status":   "revoked",
 		"token_id": req.TokenID,
-	})
-	writeJSON(w, body)
+	}))
 }
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
-// validateActionRequest checks all required fields are present and sane.
-// Returns a descriptive error — but the HTTP response to the client is always
-// the generic "invalid request body" message, not this detail.
 func validateActionRequest(req actionCheckRequest, authenticatedAgentID string) error {
 	if req.AgentID == "" {
 		return fmt.Errorf("agent_id is required")
 	}
-	// SECURITY: the agent_id in the body must match the authenticated token.
-	// Prevents agent A from submitting requests on behalf of agent B.
 	if req.AgentID != authenticatedAgentID {
 		return fmt.Errorf("agent_id in body does not match authenticated token")
 	}
@@ -398,4 +507,14 @@ func validateActionRequest(req actionCheckRequest, authenticatedAgentID string) 
 func requestIDFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(ctxRequestID).(string)
 	return v
+}
+
+// ── Response helpers ──────────────────────────────────────────────────────────
+
+func mustMarshal(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("gateway: mustMarshal failed: %v", err))
+	}
+	return b
 }

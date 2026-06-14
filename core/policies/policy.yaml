@@ -1,31 +1,114 @@
-version: "1.0.0"
-updated_at: "2026-05-18T00:00:00Z"
+# Tollgate Notary — Policy Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# This file defines every registered agent and the rules that govern them.
+# Changes take effect immediately (hot reload is active in development).
+#
+# SECURITY RULES:
+#   - default_action must always be "deny" — fail-closed is mandatory.
+#   - Unknown agents are always denied — there is no default policy.
+#   - Threshold ordering is enforced at load time:
+#       auto_approve_below_usd <= require_human_above_usd <= max_per_transaction_usd
+#   - behavioral_review_threshold must be < behavioral_risk_threshold.
+#
+# THREE-TIER ROUTING:
+#   Tier 1 (auto-approve):  amount <= auto_approve_below_usd  AND agent is warm
+#   Tier 2 (notify + veto): auto_approve_below_usd < amount <= require_human_above_usd
+#   Tier 3 (human approval): amount > require_human_above_usd  OR agent is cold-start
+
+version: "1.0.1"
+updated_at: "2026-06-07T00:00:00Z"
 updated_by: "founder@tollgate.dev"
 
+global_rules:
+  # Must always be "deny" — fail-closed is mandatory.
+  default_action: "deny"
+
+  # How old a request timestamp can be before it is rejected.
+  # NOTE: Set to 300s (5 min) so Tier 3 human approvals don't expire
+  # between when the request was submitted and when the human decides.
+  # The token TTL (60s) is the replay-prevention window — this is separate.
+  max_request_age_seconds: 300
+
+  # Nonce replay prevention.
+  require_nonce: true
+  # How long a used nonce is remembered. Must be >= approval_token_ttl_seconds.
+  nonce_window_seconds: 120
+
 agents:
+  # ── Agent: DeFi Trading Bot ─────────────────────────────────────────────────
   - id: "trading-bot-01"
     name: "DeFi Trading Agent"
     enabled: true
     purpose: "defi_yield_optimization"
     clearance_level: 2
+
     spend_limits:
-      max_per_transaction_usd: 500
-      max_per_hour_usd: 2000
-      max_per_day_usd: 5000
-      auto_approve_below_usd: 50
-      require_human_above_usd: 100
+      # Hard cap — no transaction above this is ever approved regardless of tier.
+      max_per_transaction_usd: 500.00
+      # Rolling window caps — enforced against the audit DB.
+      max_per_hour_usd: 2000.00
+      max_per_day_usd: 5000.00
+
+      # Tier thresholds — must satisfy: auto_approve <= require_human <= max_per_tx
+      # Tier 1 (auto):   amount <= 50
+      # Tier 2 (notify): 50 < amount <= 200
+      # Tier 3 (human):  amount > 200
+      auto_approve_below_usd: 50.00
+      require_human_above_usd: 200.00
+
+    # Explicit destination allow list — every address must be 0x-prefixed.
+    # DEVELOPMENT PLACEHOLDER: replace with real contract addresses before production.
     allowed_destinations:
-      - "0xDEF4560000000000000000000000000000000000"
+      - "0xDEF4560000000000000000000000000000000000" # placeholder — replace before mainnet
+
+    # Explicit destination deny list — checked BEFORE the allow list.
     blocked_destinations:
-      - "0x0000000000000000000000000000000000000000"
+      - "0x0000000000000000000000000000000000000000" # zero address — always block
+
+    # Allowed purposes — case-sensitive exact match required.
     allowed_purposes:
       - "defi_yield_optimization"
-    reject_unsolicited_permissions: true
-    behavioral_risk_threshold: 0.7
-    behavioral_review_threshold: 0.4
 
-global_rules:
-  default_action: "deny"
-  max_request_age_seconds: 30
-  require_nonce: true
-  nonce_window_seconds: 120
+    reject_unsolicited_permissions: true
+
+    # Behavioral baseline thresholds.
+    # review_threshold must be < risk_threshold (enforced at load time).
+    behavioral_risk_threshold: 0.70    # block above this score
+    behavioral_review_threshold: 0.40  # flag for review above this score
+
+    # Cold-start protection: require this many recorded transactions before
+    # the agent is eligible for Tier 1 auto-approval.
+    # Until warm, all requests route to Tier 3 (human approval).
+    # Set to 0 to disable cold-start protection (not recommended).
+    min_data_points_for_auto_approve: 20
+
+  # ── Agent: Canary (startup self-test) ───────────────────────────────────────
+  # This agent is used exclusively by RunCanary() on startup.
+  # It must always be enabled with a $1 auto-approve threshold so canary 1 passes.
+  # Do not disable or delete this agent.
+  - id: "canary-agent"
+    name: "Startup Canary"
+    enabled: true
+    purpose: "canary_transfer"
+    clearance_level: 1
+
+    spend_limits:
+      max_per_transaction_usd: 1000000.00  # high cap so canary 2 ($999,999,999) hits tx limit
+      max_per_hour_usd: 10000.00
+      max_per_day_usd: 100000.00
+      auto_approve_below_usd: 10.00        # canary 1 ($1) must be below this
+      require_human_above_usd: 500.00
+
+    allowed_destinations:
+      - "0xCAFEBABE00000000000000000000000000000001" # canary destination — not a real address
+
+    blocked_destinations:
+      - "0x0000000000000000000000000000000000000000"
+
+    allowed_purposes:
+      - "canary_transfer"
+
+    reject_unsolicited_permissions: true
+    behavioral_risk_threshold: 0.95   # very permissive — canary should never be flagged
+    behavioral_review_threshold: 0.80
+    min_data_points_for_auto_approve: 0  # canary is always warm — no cold-start protection

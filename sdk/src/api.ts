@@ -1,17 +1,16 @@
 /**
  * @file api.ts
- * TollgateClient — all HTTP communication with the Phase 1 Notary.
+ * TollgateClient — all HTTP communication with the Notary.
  *
  * SECURITY CONTRACT:
  *   - agentToken is NEVER logged, never included in error messages,
  *     never thrown in any value. It lives only in the Authorization header.
- *   - Each retry generates a FRESH nonce via the nonceFactory parameter.
- *     Reusing a nonce on retry would cause NONCE_REPLAY denial.
+ *   - Each retry generates a FRESH nonce via nonceFactory.
+ *     Reusing a nonce on retry causes NONCE_REPLAY denial.
  *   - 4xx responses are NEVER retried — a denial is a final answer.
  *   - Only network-level failures trigger retries (fetch throws, ECONNREFUSED).
  */
 
-import { z } from 'zod';
 import {
   NotaryResponseSchema,
   NotaryResponse,
@@ -21,15 +20,13 @@ import {
   TollgateNetworkError,
   TollgateTimeoutError,
   TollgateNotaryUnreachableError,
+  TollgateRequestError,
   TollgateValidationError,
   TollgateHumanApprovalTimeoutError,
 } from './errors.js';
 
-// ── DECISION ENDPOINT SCHEMA ─────────────────────────────────────────────────
-// GET /v1/decision/:id returns the same shape as /v1/action-check.
-const DecisionResponseSchema = NotaryResponseSchema;
+// ── BACKOFF ───────────────────────────────────────────────────────────────────
 
-// ── EXPONENTIAL BACKOFF ───────────────────────────────────────────────────────
 const RETRY_DELAYS_MS = [0, 1_000, 2_000, 4_000] as const;
 
 function sleep(ms: number): Promise<void> {
@@ -46,7 +43,7 @@ export class TollgateClient {
     private readonly maxRetries: number = 3,
   ) {}
 
-  // ── requestApproval ─────────────────────────────────────────────────────────
+  // ── requestApproval ──────────────────────────────────────────────────────────
 
   /**
    * POST /v1/action-check
@@ -55,9 +52,9 @@ export class TollgateClient {
    * NotaryResponse. On network failure: retries up to maxRetries times
    * with exponential backoff. Each retry gets a fresh nonce via nonceFactory.
    *
-   * @param request       The action request to evaluate.
-   * @param nonceFactory  Called before each attempt to get a fresh nonce.
-   *                      Prevents NONCE_REPLAY on retry.
+   * @param request      The action request to evaluate.
+   * @param nonceFactory Called before each attempt to produce a fresh nonce.
+   *                     Default: crypto.randomUUID().
    */
   async requestApproval(
     request: ActionRequest,
@@ -66,55 +63,55 @@ export class TollgateClient {
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      // Wait before retry (first attempt has 0 delay).
       const delay = RETRY_DELAYS_MS[attempt] ?? 4_000;
-      if (attempt > 0) {
-        await sleep(delay);
-      }
+      if (attempt > 0) await sleep(delay);
 
-      // Fresh nonce on every attempt — prevents NONCE_REPLAY.
-      const requestWithFreshNonce: ActionRequest = {
+      // Fresh nonce and timestamp on every attempt.
+      const req: ActionRequest = {
         ...request,
         nonce:     nonceFactory(),
         timestamp: new Date().toISOString(),
       };
 
       try {
-        const response = await this._post(
-          '/v1/action-check',
-          requestWithFreshNonce,
-        );
+        const response = await this._post('/v1/action-check', req);
 
-        // 4xx = final answer — do NOT retry.
+        // ── 4xx: never retry — these are final answers ──────────────────────
         if (response.status === 401 || response.status === 403) {
           throw new TollgateNetworkError(
             null,
-            `Notary rejected agent token (HTTP ${response.status})`,
+            `Notary rejected agent token (HTTP ${response.status}) — check agentToken config`,
           );
         }
         if (response.status === 429) {
-          throw new TollgateNetworkError(null, 'Rate limited by Notary');
+          throw new TollgateNetworkError(null, 'Rate limited by Notary — slow down requests');
+        }
+        if (response.status === 400) {
+          // Malformed request body — client bug, not a network or policy issue.
+          let detail = 'malformed request body';
+          try {
+            const body = await response.json() as { error?: string };
+            if (body.error) detail = body.error;
+          } catch { /* ignore parse errors */ }
+          throw new TollgateRequestError(400, detail);
         }
         if (response.status >= 400 && response.status < 500) {
-          throw new TollgateNetworkError(
-            null,
-            `Notary returned HTTP ${response.status}`,
-          );
+          throw new TollgateNetworkError(null, `Notary returned HTTP ${response.status}`);
         }
 
         const json: unknown = await response.json();
         return this._validate(json);
+
       } catch (err) {
-        // Re-throw immediately for errors that must not be retried.
-        if (err instanceof TollgateNetworkError) throw err;
+        // These errors must not be retried.
+        if (err instanceof TollgateNetworkError)  throw err;
+        if (err instanceof TollgateRequestError)  throw err;
         if (err instanceof TollgateValidationError) throw err;
-        if (err instanceof TollgateTimeoutError) throw err;
+        if (err instanceof TollgateTimeoutError)  throw err;
 
         // Network-level failure — eligible for retry.
         lastError = err;
-        if (attempt < this.maxRetries) {
-          continue;
-        }
+        if (attempt < this.maxRetries) continue;
       }
     }
 
@@ -127,18 +124,17 @@ export class TollgateClient {
   // ── pollDecision ─────────────────────────────────────────────────────────────
 
   /**
-   * GET /v1/decision/:id
+   * Polls the server-provided poll_url until the decision is no longer
+   * pending_human. Used after receiving a Tier 3 (pending_human) response.
    *
-   * Polls until the decision is no longer pending_human.
-   * Used when sendTransaction receives a pending_human response.
-   *
-   * @param decisionId   The UUID from the pending response.
-   * @param intervalMs   Poll interval in milliseconds.
+   * @param pollUrl      The poll_url from the pending_human response.
+   *                     Use the server-provided URL — don't construct your own.
+   * @param intervalMs   Milliseconds between polls (from poll_interval_seconds).
    * @param timeoutMs    Max total wait time before throwing.
    * @param onPoll       Optional callback fired before each poll attempt.
    */
   async pollDecision(
-    decisionId: string,
+    pollUrl: string,
     intervalMs: number,
     timeoutMs: number,
     onPoll?: () => void,
@@ -149,7 +145,12 @@ export class TollgateClient {
       onPoll?.();
 
       try {
-        const response = await this._get(`/v1/decision/${decisionId}`);
+        // pollUrl is a path like "/v1/decision/<id>" — prepend baseUrl.
+        const fullUrl = pollUrl.startsWith('http')
+          ? pollUrl
+          : `${this.baseUrl}${pollUrl}`;
+
+        const response = await this._getUrl(fullUrl);
         if (response.ok) {
           const json: unknown = await response.json();
           const parsed = this._validate(json);
@@ -158,12 +159,14 @@ export class TollgateClient {
           }
         }
       } catch {
-        // Poll failures are transient — keep trying until timeout.
+        // Poll failures are transient — keep trying until deadline.
       }
 
       await sleep(intervalMs);
     }
 
+    // Extract decisionId from the poll URL for the error message.
+    const decisionId = pollUrl.split('/').pop() ?? pollUrl;
     throw new TollgateHumanApprovalTimeoutError(decisionId, timeoutMs);
   }
 
@@ -172,29 +175,30 @@ export class TollgateClient {
   /**
    * GET /v1/health
    *
-   * Verifies the Notary is reachable and reports status ok.
+   * Verifies the Notary is reachable and healthy.
    * Called by TollgateSigner.create() before returning the instance.
+   *
+   * Distinguishes two failure modes:
+   *   - Connection refused / DNS failure → Notary is not running
+   *   - HTTP non-2xx → Notary is running but unhealthy (policy invalid, DB down)
    */
   async healthCheck(): Promise<boolean> {
     try {
       const response = await this._get('/v1/health');
       if (!response.ok) {
-        throw new TollgateNotaryUnreachableError(this.baseUrl);
+        // Notary is reachable but reports degraded status.
+        throw new TollgateNotaryUnreachableError(this.baseUrl, response.status);
       }
       return true;
     } catch (err) {
       if (err instanceof TollgateNotaryUnreachableError) throw err;
+      // Connection-level failure — Notary not running.
       throw new TollgateNotaryUnreachableError(this.baseUrl);
     }
   }
 
-  // ── PRIVATE HELPERS ──────────────────────────────────────────────────────────
+  // ── PRIVATE ───────────────────────────────────────────────────────────────────
 
-  /**
-   * POST with JSON body. AbortController enforces the timeout.
-   * SECURITY: Authorization header carries the agentToken — it is never
-   * logged, never included in error messages.
-   */
   private async _post(path: string, body: unknown): Promise<Response> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -204,32 +208,10 @@ export class TollgateClient {
         method:  'POST',
         headers: {
           'Content-Type':  'application/json',
+          // SECURITY: agentToken is never logged or included in errors.
           'Authorization': `Bearer ${this.agentToken}`,
         },
         body:   JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new TollgateTimeoutError(this.timeoutMs);
-      }
-      throw err; // Network error — will be caught by retry loop above.
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  /** GET with auth header. No retry logic — caller handles polling. */
-  private async _get(path: string): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      return await fetch(`${this.baseUrl}${path}`, {
-        method:  'GET',
-        headers: {
-          'Authorization': `Bearer ${this.agentToken}`,
-        },
         signal: controller.signal,
       });
     } catch (err) {
@@ -242,7 +224,30 @@ export class TollgateClient {
     }
   }
 
-  /** Validates the raw JSON response against NotaryResponseSchema. */
+  private async _get(path: string): Promise<Response> {
+    return this._getUrl(`${this.baseUrl}${path}`);
+  }
+
+  private async _getUrl(url: string): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      return await fetch(url, {
+        method:  'GET',
+        headers: { 'Authorization': `Bearer ${this.agentToken}` },
+        signal:  controller.signal,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new TollgateTimeoutError(this.timeoutMs);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private _validate(json: unknown): NotaryResponse {
     const result = NotaryResponseSchema.safeParse(json);
     if (!result.success) {

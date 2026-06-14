@@ -1,17 +1,17 @@
 # defi-agent
 
-A complete DeFi trading agent example demonstrating every Tollgate feature.
+A complete DeFi trading agent demonstrating every Tollgate feature across all three tiers.
 
 ## What it demonstrates
 
-- ✅ Auto-approved small transactions (below threshold)
-- ✅ Larger transactions flagged for review
-- ✅ Purpose mismatch denial (`buy_nfts` rejected)
-- ✅ Unknown destination denial
-- ✅ Spend limit enforcement ($600 > $500 limit)
-- ✅ Behavioral baseline — new destinations get higher risk scores
-- ✅ Human approval callbacks
-- ✅ Full error handling for every denial type
+| Test | Expected result |
+|------|----------------|
+| $10 swap | Tier 1 auto-approve (or Tier 3 if agent is cold) |
+| $75 swap | Tier 2 — approved + notification sent + veto window |
+| $300 swap | Tier 3 — blocks until human approves |
+| Wrong purpose | `PURPOSE_MISMATCH` denial |
+| Unknown destination | `DESTINATION_NOT_ALLOWED` denial |
+| $600 swap | `EXCEEDS_TRANSACTION_LIMIT` denial |
 
 ## Run it
 
@@ -20,42 +20,64 @@ A complete DeFi trading agent example demonstrating every Tollgate feature.
 cd ../../core
 go run ./cmd/server/main.go
 
-# Terminal 2 — run the agent
+# Terminal 2 — paste your token and run
 cd examples/defi-agent
-AGENT_TOKEN=your_token npx tsx index.ts
+# Open index.ts and paste your token into AGENT_TOKEN
+npx tsx index.ts
 ```
 
 ## Expected output
 
 ```
-[2026-05-28T...] Starting DeFi agent with Tollgate protection...
-[2026-05-28T...] ✓ Connected to Tollgate Notary
+[13:10:01.000] Starting DeFi agent with Tollgate protection...
+[13:10:01.052] ✓ Connected to Tollgate Notary
 
-[2026-05-28T...] → Small swap — should auto-approve ($10)
-[2026-05-28T...]   ✓ APPROVED | risk: 0.00 | auto: true
+[13:10:01.053] → Small swap $10 — expect Tier 1 auto-approve
+[13:10:01.120]   ✓ APPROVED (Tier 1) | risk: 0.00 | auto: true
 
-[2026-05-28T...] → Medium swap — above auto-approve ($75)
-[2026-05-28T...]   ✓ APPROVED | risk: 0.00 | auto: false
+[13:10:01.121] → Medium swap $75 — expect Tier 2 notify+veto
+[13:10:01.189]   ✓ APPROVED WITH NOTIFICATION (Tier 2) | veto: 120s | risk: 0.00
 
-[2026-05-28T...] → NFT purchase — purpose mismatch (should deny)
-[2026-05-28T...]   ✗ DENIED [PURPOSE_MISMATCH]: Purpose "buy_nfts" is not in the agent's allowed_purposes list.
+[13:10:01.190] → Large swap $300 — expect Tier 3 human approval
+[13:10:01.245]   ⏳ PENDING HUMAN APPROVAL (Tier 3)
+[13:10:01.245]      Poll: /v1/decision/... every 3s
 
-[2026-05-28T...] → Unknown destination — not whitelisted (should deny)
-[2026-05-28T...]   ✗ DENIED [DESTINATION_NOT_ALLOWED]: Destination is not in allowed_destinations.
+[13:10:01.246] → NFT purchase — expect PURPOSE_MISMATCH denial
+[13:10:01.301]   ✗ DENIED [PURPOSE_MISMATCH]: Requested purpose is not permitted for this agent.
 
-[2026-05-28T...] → Large swap — exceeds $500 limit (should deny)
-[2026-05-28T...]   ✗ DENIED [EXCEEDS_TRANSACTION_LIMIT]: Amount $600.00 exceeds limit of $500.00.
+[13:10:01.302] → Unknown pool — expect DESTINATION_NOT_ALLOWED denial
+[13:10:01.356]   ✗ DENIED [DESTINATION_NOT_ALLOWED]: Destination address is not on the allow list.
 
-[2026-05-28T...] → Pool B — new destination (watch risk score)
-[2026-05-28T...]   ✓ APPROVED | risk: 0.00 | auto: true
+[13:10:01.357] → Whale swap $600 — expect EXCEEDS_TRANSACTION_LIMIT denial
+[13:10:01.410]   ✗ DENIED [EXCEEDS_TRANSACTION_LIMIT]: Transaction amount exceeds the per-transaction limit.
 ```
+
+> **Note on cold-start:** On a fresh server, Tier 1 ($10) and Tier 2 ($75)
+> will both route to Tier 3 (pending human) until the agent accumulates
+> 20 approved transactions. This is the cold-start protection working correctly.
+> Set `min_data_points_for_auto_approve: 0` in `policy.yaml` to disable it
+> during development.
 
 ## Check the audit log
 
-After running, inspect every decision:
+Every decision — approved and denied — is recorded:
 
 ```bash
 sqlite3 ../../core/data/audit.db \
-  "SELECT agent_id, decision, denial_code, amount_usd, created_at
+  "SELECT decision, tier, denial_code, amount_usd
    FROM decisions ORDER BY created_at DESC LIMIT 10;"
 ```
+
+## Tier routing thresholds
+
+These come from `policy.yaml` for `trading-bot-01`:
+
+| Amount | Tier | Behaviour |
+|--------|------|-----------|
+| ≤ $50 | 1 | Auto-approve (no human involved) |
+| $50–$200 | 2 | Approve + notify + 120s veto window |
+| > $200 | 3 | Block until human approves |
+| > $500 | — | Denied (exceeds max_per_transaction_usd) |
+
+Edit `../../core/policies/policy.yaml` to change these thresholds.
+Changes take effect immediately — no Notary restart needed.

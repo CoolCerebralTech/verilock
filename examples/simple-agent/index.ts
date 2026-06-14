@@ -6,30 +6,44 @@
  *
  * Setup:
  *   1. Start the Notary:  cd ../../core && go run ./cmd/server/main.go
- *   2. Copy the Bearer token from the Notary startup log
- *   3. Fill in the config below
+ *   2. Copy the Bearer token from the Notary startup log (the v1.eyJ... part)
+ *   3. Paste it into AGENT_TOKEN below
  *   4. Run: npx tsx index.ts
+ *
+ * Add this file to .gitignore before pasting any real token.
  */
 
 import { TollgateSigner } from '../../sdk/src/index.js';
 
-async function main() {
-  // Create the signer — validates config and checks Notary is reachable
-  const tollgate = await TollgateSigner.create({
-    notaryUrl:       'http://localhost:8080',
-    agentToken:      process.env['AGENT_TOKEN']  ?? '',
-    agentId:         'trading-bot-01',
-    safeAddress:     (process.env['SAFE_ADDRESS']  ?? '0x0000000000000000000000000000000000000001') as `0x${string}`,
-    ownerPrivateKey: (process.env['OWNER_KEY'] ?? '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80') as `0x${string}`,
-  });
+// ── Config — fill in AGENT_TOKEN, leave everything else ──────────────────────
+// ownerPrivateKey is only used for sendTransaction() — not needed for simulate().
+// The dummy value below is safe to leave as-is for simulate-only runs.
 
+const AGENT_TOKEN = '';  // ← paste the v1.eyJ... token from Notary startup log
+
+const CONFIG = {
+  notaryUrl:       'http://localhost:8080',
+  agentToken:      AGENT_TOKEN,
+  agentId:         'trading-bot-01',
+  safeAddress:     '0x76Db37E62F080Fe2EAa78DF9089b7daCb155A5A6' as `0x${string}`,
+  ownerPrivateKey: '0x0000000000000000000000000000000000000000000000000000000000000001' as `0x${string}`,
+};
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+async function main() {
+  if (!AGENT_TOKEN) {
+    throw new Error('AGENT_TOKEN is empty — paste the v1.eyJ... token from Notary startup log');
+  }
+
+  const tollgate = await TollgateSigner.create(CONFIG);
   console.log('✓ Connected to Tollgate Notary');
 
   // simulate() calls the Notary and returns the decision — without hitting the chain.
-  // Use sendTransaction() instead to submit a real transaction.
+  // Use sendTransaction() to submit a real on-chain transaction.
   const result = await tollgate.simulate({
-    to:        '0xdef4560000000000000000000000000000000000',
-    value:     BigInt(10_000_000),   // wei
+    to:        '0xDEF4560000000000000000000000000000000000',
+    value:     10_000_000n,
     amountUsd: 10.00,
     purpose:   'defi_yield_optimization',
   });
@@ -37,14 +51,25 @@ async function main() {
   if (result.status === 'approved') {
     console.log('✓ Transaction approved by Tollgate');
     console.log('  Token ID  :', result.approval_token.token_id);
+    console.log('  Tier      :', result.approval_token.tier);
     console.log('  Expires   :', result.approval_token.expires_at);
     console.log('  Risk score:', result.approval_token.risk_score);
-    console.log('  Signature :', result.approval_token.signature.slice(0, 20) + '...');
+    console.log('  Signature :', result.approval_token.signature.slice(0, 22) + '...');
+  } else if (result.status === 'approved_with_notification') {
+    console.log('✓ Transaction approved (Tier 2 — notification sent)');
+    console.log('  Veto window:', result.veto_window_seconds + 's');
+    console.log('  Token ID   :', result.approval_token.token_id);
+  } else if (result.status === 'pending_human') {
+    console.log('⏳ Awaiting human approval (Tier 3)');
+    console.log('  Decision ID:', result.decision_id);
+    console.log('  Poll URL   :', result.poll_url);
   } else if (result.status === 'denied') {
     console.log('✗ Transaction denied');
-    console.log('  Code    :', result.code);
-    console.log('  Reason  :', result.message);
+    console.log('  Code   :', result.code);
+    console.log('  Message:', result.message);
   }
 }
 
-main().catch(console.error);
+main().catch((err: unknown) => {
+  console.error('✗', err instanceof Error ? err.message : String(err));
+});

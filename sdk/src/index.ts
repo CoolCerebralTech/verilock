@@ -8,6 +8,16 @@
  *   properties with generic types. The clean solution is to not store viem
  *   clients as properties — create them per-call from stored config.
  *   This is the correct pattern for an SDK library (no long-lived connections).
+ *
+ * Design note on Safe signatures:
+ *   Gnosis Safe's checkNSignatures expects signatures over the RAW 32-byte
+ *   Safe transaction hash — no EIP-191 prefix, no EIP-712 wrapper.
+ *   Use account.sign({ hash }) (raw signing) NOT account.signMessage() which
+ *   prepends "\x19Ethereum Signed Message:\n32" and produces a signature the
+ *   Safe rejects with GS026.
+ *
+ *   This SDK supports threshold=1 Safes (single owner).
+ *   Multi-owner Safes require the Safe SDK for signature collection.
  */
 
 import {
@@ -15,6 +25,7 @@ import {
   createPublicClient,
   http,
   parseAbi,
+  formatEther,
   type Hash,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -35,6 +46,7 @@ import {
   TollgateTransactionDeniedError,
   TollgateTokenExpiredError,
   TollgateOnChainError,
+  TollgateNetworkError,
 } from './errors.js';
 
 // ── GNOSIS SAFE ABI (minimal) ─────────────────────────────────────────────────
@@ -47,10 +59,6 @@ const SAFE_ABI = parseAbi([
 
 const ZERO_ADDR = '0x0000000000000000000000000000000000000000' as const;
 
-// ── CHAIN SELECTION ───────────────────────────────────────────────────────────
-// Typed as a discriminated helper so TypeScript infers the correct chain
-// for each createPublicClient / createWalletClient call.
-
 function selectChain(useMainnet: boolean | undefined) {
   return useMainnet ? base : baseSepolia;
 }
@@ -58,16 +66,13 @@ function selectChain(useMainnet: boolean | undefined) {
 // ── TOLLGATE SIGNER ───────────────────────────────────────────────────────────
 
 export class TollgateSigner {
-  // Only store serialisable config + derived primitives.
-  // Viem clients are created fresh per-call to avoid OP Stack generic conflicts.
   private readonly config: TollgateConfig;
   private readonly chainId: number;
   private readonly notaryClient: TollgateClient;
 
   private constructor(config: TollgateConfig) {
-    this.config  = config;
-    this.chainId = config.useMainnet ? BASE_MAINNET_CHAIN_ID : BASE_SEPOLIA_CHAIN_ID;
-
+    this.config       = config;
+    this.chainId      = config.useMainnet ? BASE_MAINNET_CHAIN_ID : BASE_SEPOLIA_CHAIN_ID;
     this.notaryClient = new TollgateClient(
       config.notaryUrl,
       config.agentToken,
@@ -75,8 +80,6 @@ export class TollgateSigner {
       config.maxRetries      ?? 3,
     );
   }
-
-  // ── VIEM CLIENT FACTORIES (private) ──────────────────────────────────────────
 
   private _publicClient() {
     return createPublicClient({
@@ -86,9 +89,8 @@ export class TollgateSigner {
   }
 
   private _walletClient() {
-    const account = privateKeyToAccount(this.config.ownerPrivateKey);
     return createWalletClient({
-      account,
+      account:   privateKeyToAccount(this.config.ownerPrivateKey),
       chain:     selectChain(this.config.useMainnet),
       transport: http(),
     });
@@ -98,9 +100,9 @@ export class TollgateSigner {
 
   /**
    * Creates a TollgateSigner after validating config and health-checking
-   * the Notary. Always use this instead of `new TollgateSigner()`.
+   * the Notary. Always use this — the constructor is private.
    *
-   * @throws TollgateConfigError            if any required field is missing
+   * @throws TollgateConfigError             if any required field is missing
    * @throws TollgateNotaryUnreachableError  if the Notary is not reachable
    */
   static async create(config: TollgateConfig): Promise<TollgateSigner> {
@@ -112,7 +114,6 @@ export class TollgateSigner {
     if (!config.notaryUrl.startsWith('http')) {
       throw new TollgateConfigError('notaryUrl must start with http:// or https://');
     }
-
     const signer = new TollgateSigner(config);
     await signer.notaryClient.healthCheck();
     return signer;
@@ -121,18 +122,21 @@ export class TollgateSigner {
   // ── SEND TRANSACTION ─────────────────────────────────────────────────────────
 
   /**
-   * The only method a developer calls.
-   *
    * Requests Notary approval, encodes the token into calldata, and submits
-   * the transaction through the Gnosis Safe on Base.
+   * through the Gnosis Safe. Handles all three tiers transparently.
    *
-   * @throws TollgateTransactionDeniedError    if Notary denies the request
-   * @throws TollgateHumanApprovalTimeoutError if human approval times out
-   * @throws TollgateTokenExpiredError          if token expires before submission
-   * @throws TollgateOnChainError               if the Safe transaction reverts
+   * Tier 1 — auto-approved:             submits immediately, no callback.
+   * Tier 2 — approved_with_notification: submits immediately, fires
+   *   onApprovedWithNotification with the veto window duration.
+   * Tier 3 — pending_human:             polls until approved or timeout.
+   *
+   * @throws TollgateTransactionDeniedError    Notary denied the request
+   * @throws TollgateHumanApprovalTimeoutError Tier 3 timed out
+   * @throws TollgateTokenExpiredError         Token expired before submission
+   * @throws TollgateOnChainError              Safe transaction reverted
    */
   async sendTransaction(params: TxRequest): Promise<Hash> {
-    // ── Step 1: Build ActionRequest ───────────────────────────────────────────
+    // ── Step 1: Validate purpose ──────────────────────────────────────────────
     const purpose = params.purpose ?? this.config.defaultPurpose ?? '';
     if (!purpose) {
       throw new TollgateConfigError(
@@ -140,6 +144,7 @@ export class TollgateSigner {
       );
     }
 
+    // ── Step 2: Build ActionRequest ───────────────────────────────────────────
     const request: ActionRequest = {
       agent_id:    this.config.agentId,
       action:      'transfer',
@@ -152,59 +157,95 @@ export class TollgateSigner {
       timestamp:   new Date().toISOString(),
     };
 
-    // ── Step 2: Request Notary approval ───────────────────────────────────────
+    // ── Step 3: Request Notary approval ───────────────────────────────────────
     let response: NotaryResponse = await this.notaryClient.requestApproval(request);
 
-    // ── Step 3: Handle human approval ─────────────────────────────────────────
+    // ── Step 4: Handle denial ─────────────────────────────────────────────────
     if (response.status === 'denied') {
       throw new TollgateTransactionDeniedError(response.code, response.message);
     }
 
+    // ── Step 5: Tier 3 — poll for human approval ──────────────────────────────
     if (response.status === 'pending_human') {
       this.config.onPendingHumanApproval?.(response.decision_id);
+
+      // Use the server-provided poll_interval_seconds first,
+      // falling back to config default only if the field is absent.
+      const pollIntervalMs = response.poll_interval_seconds > 0
+        ? response.poll_interval_seconds * 1_000
+        : (this.config.humanApprovalPollIntervalMs ?? 3_000);
+
       response = await this.notaryClient.pollDecision(
-        response.decision_id,
-        this.config.humanApprovalPollIntervalMs ?? 3_000,
-        this.config.humanApprovalTimeoutMs      ?? 300_000,
+        response.poll_url,
+        pollIntervalMs,
+        this.config.humanApprovalTimeoutMs ?? 300_000,
       );
+
       if (response.status === 'denied') {
         throw new TollgateTransactionDeniedError(response.code, response.message);
       }
-      if (response.status === 'approved') {
+      if (response.status === 'approved' || response.status === 'approved_with_notification') {
         this.config.onHumanApprovalReceived?.(response.decision_id);
       }
     }
 
-    if (response.status !== 'approved') {
-      throw new TollgateTransactionDeniedError('UNKNOWN', 'Unexpected Notary response');
+    // ── Step 6: Tier 2 — fire notification callback ───────────────────────────
+    // Transaction executes immediately. The Notary already sent the notification.
+    // Fire the callback so the developer can show the veto countdown UI.
+    if (response.status === 'approved_with_notification') {
+      this.config.onApprovedWithNotification?.(
+        response.decision_id,
+        response.veto_window_seconds,
+      );
+    }
+
+    // ── Step 7: Guard — only approved statuses should reach here ─────────────
+    if (response.status !== 'approved' && response.status !== 'approved_with_notification') {
+      throw new TollgateTransactionDeniedError(
+        'UNKNOWN',
+        `Unexpected Notary status: ${response.status}`,
+      );
     }
 
     const token = response.approval_token;
 
-    // ── Step 4: Check token expiry ────────────────────────────────────────────
+    // ── Step 8: Token expiry buffer ───────────────────────────────────────────
     const bufferSec = this.config.tokenExpiryBufferSeconds ?? 10;
     const expiresIn = new Date(token.expires_at).getTime() / 1000 - Date.now() / 1000;
     if (expiresIn < bufferSec) {
       throw new TollgateTokenExpiredError(token.token_id, token.expires_at);
     }
 
-    // ── Step 5: Inject token into calldata ────────────────────────────────────
-    const modifiedData = injectTollgateToken(params.data ?? '0x', token);
+    // ── Step 9: Inject token into calldata ────────────────────────────────────
+    const modifiedData = injectTollgateToken(params.data, token);
 
-    // ── Steps 6-10: Chain interactions ───────────────────────────────────────
-    // Create clients fresh — correct types inferred from selectChain().
+    // ── Step 10: Viem clients ─────────────────────────────────────────────────
     const publicClient = this._publicClient();
     const walletClient = this._walletClient();
     const account      = privateKeyToAccount(this.config.ownerPrivateKey);
 
-    // Step 6: Read Safe nonce
+    // ── Step 11: Preflight — Safe ETH balance ─────────────────────────────────
+    if (params.value > 0n) {
+      const safeBalance = await publicClient.getBalance({
+        address: this.config.safeAddress,
+      });
+      if (safeBalance < params.value) {
+        throw new TollgateNetworkError(
+          null,
+          `Safe ${this.config.safeAddress} has insufficient balance: ` +
+          `has ${formatEther(safeBalance)} ETH, needs ${formatEther(params.value)} ETH`,
+        );
+      }
+    }
+
+    // ── Step 12: Safe nonce ───────────────────────────────────────────────────
     const safeNonce = await publicClient.readContract({
       address:      this.config.safeAddress,
       abi:          SAFE_ABI,
       functionName: 'nonce',
     });
 
-    // Step 7: Get Safe transaction hash
+    // ── Step 13: Safe transaction hash ────────────────────────────────────────
     const safeTxHash = await publicClient.readContract({
       address:      this.config.safeAddress,
       abi:          SAFE_ABI,
@@ -217,12 +258,15 @@ export class TollgateSigner {
       ],
     });
 
-    // Step 8: Sign the Safe tx hash
-    const sig = await account.signMessage({
-      message: { raw: safeTxHash as `0x${string}` },
+    // ── Step 14: Sign raw Safe transaction hash ───────────────────────────────
+    // CRITICAL: account.sign({ hash }) signs the raw bytes — no EIP-191 prefix.
+    // account.signMessage() would prepend "\x19Ethereum Signed Message:\n32"
+    // and produce a signature Gnosis Safe rejects with GS026.
+    const sig = await account.sign({
+      hash: safeTxHash as `0x${string}`,
     });
 
-    // Step 9: Submit execTransaction
+    // ── Step 15: Submit execTransaction ──────────────────────────────────────
     const txHash = await walletClient.writeContract({
       address:      this.config.safeAddress,
       abi:          SAFE_ABI,
@@ -235,10 +279,10 @@ export class TollgateSigner {
       ],
     });
 
-    // Step 10: Wait for receipt
+    // ── Step 16: Wait for receipt ─────────────────────────────────────────────
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
     if (receipt.status === 'reverted') {
-      throw new TollgateOnChainError(txHash, 'Transaction reverted at Guard');
+      throw new TollgateOnChainError(txHash, 'Transaction reverted — check Guard configuration');
     }
 
     return txHash;
@@ -248,7 +292,7 @@ export class TollgateSigner {
 
   /**
    * Calls the Notary and returns the decision without submitting on-chain.
-   * Useful for testing policy rules and verifying connectivity.
+   * Useful for testing policy rules and previewing which tier applies.
    */
   async simulate(params: TxRequest): Promise<NotaryResponse> {
     const purpose = params.purpose ?? this.config.defaultPurpose ?? '';
@@ -274,6 +318,7 @@ export class TollgateSigner {
 }
 
 // ── PUBLIC EXPORTS ────────────────────────────────────────────────────────────
+
 export type {
   TollgateConfig,
   TxRequest,

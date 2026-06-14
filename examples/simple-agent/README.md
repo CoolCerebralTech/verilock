@@ -1,23 +1,26 @@
 # simple-agent
 
-The minimum viable Tollgate integration — 20 lines of TypeScript.
+The minimum viable Tollgate integration — 30 lines of TypeScript.
 
 ## What it does
 
 1. Creates a `TollgateSigner` connected to your local Notary
-2. Calls `simulate()` with a sample transaction
-3. Prints the Notary's decision — approved or denied
+2. Calls `simulate()` with a $10 transaction
+3. Prints the Notary's decision — approved, pending, or denied
+
+No on-chain transaction is submitted. `simulate()` is read-only.
 
 ## Run it
 
 ```bash
-# 1. Start the Notary (in another terminal)
+# Terminal 1 — start the Notary
 cd ../../core
 go run ./cmd/server/main.go
 
-# 2. Copy the Bearer token from the startup log, then:
-cd ../../examples/simple-agent
-AGENT_TOKEN=your_token_here npx tsx index.ts
+# Terminal 2 — paste the token from the Notary startup log, then run
+cd examples/simple-agent
+# Open index.ts and paste your token into AGENT_TOKEN
+npx tsx index.ts
 ```
 
 ## Expected output
@@ -26,24 +29,33 @@ AGENT_TOKEN=your_token_here npx tsx index.ts
 ✓ Connected to Tollgate Notary
 ✓ Transaction approved by Tollgate
   Token ID  : 9692d4ac-...
-  Expires   : 2026-05-28T...
+  Tier      : 3
+  Expires   : 2026-06-11T...
   Risk score: 0
   Signature : 0x02b91613e3...
 ```
 
+> **Note:** Tier 3 (pending human) on first run is expected — the agent
+> has no behavioral history yet so cold-start protection routes everything
+> to human approval. After 20 approved transactions it will auto-approve
+> at Tier 1.
+
 ## Try a denial
 
-Change `purpose` to `buy_nfts` — a purpose not in the policy:
+Change `purpose` to something not in the policy:
 
 ```typescript
 purpose: 'buy_nfts',
 ```
 
-You will see:
+Output:
 ```
 ✗ Transaction denied
   Code   : PURPOSE_MISMATCH
-  Reason : Purpose "buy_nfts" is not in the agent's allowed_purposes list.
+  Message: Requested purpose is not permitted for this agent.
 ```
 
-That is the policy engine working correctly.
+## Next step
+
+Once this works, look at the `defi-agent` example for a complete demo
+of all three tiers, spend limits, and behavioral baseline scoring.

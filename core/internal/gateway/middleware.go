@@ -24,8 +24,8 @@ const (
 
 // ── Middleware 1: Panic Recovery ──────────────────────────────────────────────
 
-// recoverMiddleware catches any panic in downstream handlers, logs it,
-// returns 500 to the client, and keeps the server alive for other requests.
+// recoverMiddleware catches any panic in downstream handlers, logs it with the
+// request ID, returns 500 to the client, and keeps the server alive.
 func recoverMiddleware(log *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +64,7 @@ func requestSizeMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
 // ── Middleware 3: Request ID ──────────────────────────────────────────────────
 
 // requestIDMiddleware assigns a UUID to every request.
-// Added to the response header and request context for end-to-end tracing.
+// Stored in the response header and request context for end-to-end tracing.
 func requestIDMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +79,11 @@ func requestIDMiddleware() func(http.Handler) http.Handler {
 // ── Middleware 4: Global Rate Limit ──────────────────────────────────────────
 
 // globalRateLimitMiddleware enforces the total server RPS ceiling.
-// Returns 429 with Retry-After if exceeded.
+// At this point in the middleware stack the agent identity is not yet known,
+// so only the global bucket is checked here. Per-agent limiting is enforced
+// inside authenticateRequest() after identity is established.
+//
+// Returns 429 with Retry-After: 1 if the global limit is exceeded.
 func globalRateLimitMiddleware(deps Deps) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +101,7 @@ func globalRateLimitMiddleware(deps Deps) func(http.Handler) http.Handler {
 
 // loggingMiddleware logs every request with request ID, method, path,
 // status code, and duration.
-// SECURITY: token values and secrets are never logged.
+// SECURITY: Authorization header, token strings, and secrets are never logged.
 func loggingMiddleware(log *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -127,12 +131,12 @@ func loggingMiddleware(log *zap.Logger) func(http.Handler) http.Handler {
 // registry, enforces the per-agent rate limit, and returns agent identity.
 //
 // Returns (agentID, tokenID, true) on success.
-// Writes 401 and returns ("", "", false) on any failure.
+// Writes 401/429 and returns ("", "", false) on any failure.
 //
 // SECURITY:
-//   - All failure paths return exactly the same 401 body.
-//     Never hint at which check failed.
+//   - All 401 paths return exactly the same body — never hint at which check failed.
 //   - The raw token string is never logged.
+//   - Per-agent rate limiting runs here (after identity is known), not in middleware.
 func authenticateRequest(w http.ResponseWriter, r *http.Request, deps Deps) (agentID, tokenID string, ok bool) {
 	authHeader := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authHeader, "Bearer ") {
@@ -152,12 +156,17 @@ func authenticateRequest(w http.ResponseWriter, r *http.Request, deps Deps) (age
 		return "", "", false
 	}
 
-	// Per-agent rate limit — after auth so we know which agent it is.
+	// Per-agent rate limit — enforced after identity is established.
+	// Global was already checked in middleware; this is the per-agent check.
 	if !deps.RateLimiter.AllowAgent(claims.AgentID) {
 		w.Header().Set("Retry-After", "1")
 		writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
 		return "", "", false
 	}
+
+	// Store agentID in context so the logging middleware can include it.
+	ctx := context.WithValue(r.Context(), ctxAgentID, claims.AgentID)
+	*r = *r.WithContext(ctx)
 
 	return claims.AgentID, claims.TokenID, true
 }
@@ -197,17 +206,34 @@ func writeError(w http.ResponseWriter, status int, message string) {
 func writeJSON(w http.ResponseWriter, body []byte) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(body)
+	w.Write(body) //nolint:errcheck — write errors are unrecoverable at response time
 }
 
 // ── responseWriter wraps http.ResponseWriter to capture the status code ──────
 
+// responseWriter captures the HTTP status code written by handlers so the
+// logging middleware can record it. Overrides both WriteHeader and Write
+// to handle cases where a handler writes a body without an explicit WriteHeader
+// call (Go implicitly sends 200 on first Write).
 type responseWriter struct {
 	http.ResponseWriter
-	status int
+	status      int
+	wroteHeader bool
 }
 
 func (rw *responseWriter) WriteHeader(status int) {
-	rw.status = status
+	if !rw.wroteHeader {
+		rw.status = status
+		rw.wroteHeader = true
+	}
 	rw.ResponseWriter.WriteHeader(status)
+}
+
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	if !rw.wroteHeader {
+		// Go's default: first Write without WriteHeader implies 200.
+		rw.status = http.StatusOK
+		rw.wroteHeader = true
+	}
+	return rw.ResponseWriter.Write(b)
 }

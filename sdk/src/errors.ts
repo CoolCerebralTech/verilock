@@ -1,11 +1,11 @@
 /**
  * @file errors.ts
  * All Tollgate SDK error classes.
- * Every error extends TollgateError so developers can catch the whole family
- * with a single `catch (e) { if (e instanceof TollgateError) ... }`.
+ * Every error extends TollgateError so developers can catch the whole family:
+ *   catch (e) { if (e instanceof TollgateError) { ... } }
  */
 
-// ── BASE ERROR ──────────────────────────────────────────────────────────────
+// ── BASE ────────────────────────────────────────────────────────────────────
 
 export class TollgateError extends Error {
   constructor(
@@ -14,12 +14,12 @@ export class TollgateError extends Error {
   ) {
     super(`[Tollgate/${code}] ${message}`);
     this.name = 'TollgateError';
-    // Fix instanceof checks in compiled/transpiled JS
+    // Fix instanceof checks in compiled/transpiled JS (CommonJS + down-level emit).
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
-// ── CONFIG ERRORS ───────────────────────────────────────────────────────────
+// ── CONFIG ──────────────────────────────────────────────────────────────────
 
 /** Thrown when a required config field is missing or invalid. */
 export class TollgateConfigError extends TollgateError {
@@ -29,7 +29,7 @@ export class TollgateConfigError extends TollgateError {
   }
 }
 
-// ── NETWORK ERRORS ──────────────────────────────────────────────────────────
+// ── NETWORK ─────────────────────────────────────────────────────────────────
 
 /** Thrown on fetch failure (ECONNREFUSED, DNS, etc.) after all retries. */
 export class TollgateNetworkError extends TollgateError {
@@ -52,20 +52,41 @@ export class TollgateTimeoutError extends TollgateError {
 
 /** Thrown by healthCheck() when the Notary is not reachable. */
 export class TollgateNotaryUnreachableError extends TollgateError {
-  constructor(url: string) {
-    super('UNREACHABLE', `Notary not reachable at ${url}. Is it running?`);
+  constructor(
+    public readonly url: string,
+    public readonly httpStatus?: number,
+  ) {
+    super(
+      'UNREACHABLE',
+      httpStatus
+        ? `Notary at ${url} returned HTTP ${httpStatus} — is it healthy?`
+        : `Notary not reachable at ${url} — is it running?`,
+    );
     this.name = 'TollgateNotaryUnreachableError';
   }
 }
 
-// ── POLICY ERRORS ───────────────────────────────────────────────────────────
+// ── REQUEST ─────────────────────────────────────────────────────────────────
+
+/**
+ * Thrown when the Notary returns HTTP 400 — the request body was malformed.
+ * This is a client-side bug, not a network error or a policy denial.
+ */
+export class TollgateRequestError extends TollgateError {
+  constructor(
+    public readonly httpStatus: number,
+    msg: string,
+  ) {
+    super('REQUEST', `HTTP ${httpStatus}: ${msg}`);
+    this.name = 'TollgateRequestError';
+  }
+}
+
+// ── POLICY ──────────────────────────────────────────────────────────────────
 
 /**
  * Thrown when the Notary denies the transaction.
- * Contains the exact denial code and message from Phase 1 for debugging.
- *
- * SECURITY: denialCode and denialMessage come from the Notary — they
- * never contain the agent token or any secret values.
+ * denialCode and denialMessage come from the Notary — safe to surface to users.
  */
 export class TollgateTransactionDeniedError extends TollgateError {
   constructor(
@@ -77,36 +98,54 @@ export class TollgateTransactionDeniedError extends TollgateError {
   }
 }
 
-/** Thrown when a human approval times out waiting for a decision. */
+/** Thrown when human approval times out without a decision. */
 export class TollgateHumanApprovalTimeoutError extends TollgateError {
-  constructor(decisionId: string, ms: number) {
-    super(
-      'HUMAN_TIMEOUT',
-      `Human approval timed out after ${ms}ms. Decision ID: ${decisionId}`,
-    );
+  constructor(
+    public readonly decisionId: string,
+    ms: number,
+  ) {
+    super('HUMAN_TIMEOUT', `Human approval timed out after ${ms}ms. Decision ID: ${decisionId}`);
     this.name = 'TollgateHumanApprovalTimeoutError';
   }
 }
 
 /**
- * Thrown when the token expiry is too close to safely submit the transaction.
- * The SDK rejects it before hitting the chain to avoid a Guard revert.
+ * Thrown when a Tier 2 transaction is vetoed during the veto window.
+ * The transaction has already executed on-chain — this signals that a
+ * human reviewer flagged it after the fact.
+ */
+export class TollgateVetoError extends TollgateError {
+  constructor(
+    public readonly decisionId: string,
+    public readonly vetoWindowSeconds: number,
+  ) {
+    super(
+      'VETOED',
+      `Transaction ${decisionId} was vetoed within the ${vetoWindowSeconds}s veto window`,
+    );
+    this.name = 'TollgateVetoError';
+  }
+}
+
+/**
+ * Thrown when the token expiry is too close to safely submit.
+ * The SDK rejects before hitting the chain to avoid a Guard revert.
  */
 export class TollgateTokenExpiredError extends TollgateError {
-  constructor(tokenId: string, expiresAt: string) {
-    super(
-      'TOKEN_EXPIRED',
-      `Token ${tokenId} expires at ${expiresAt} — too close to expiry to submit safely`,
-    );
+  constructor(
+    public readonly tokenId: string,
+    public readonly expiresAt: string,
+  ) {
+    super('TOKEN_EXPIRED', `Token ${tokenId} expires at ${expiresAt} — too close to expiry to submit safely`);
     this.name = 'TollgateTokenExpiredError';
   }
 }
 
-// ── VALIDATION ERRORS ───────────────────────────────────────────────────────
+// ── VALIDATION ───────────────────────────────────────────────────────────────
 
 /**
- * Thrown when the Notary returns a response that fails Zod schema validation.
- * Means the Notary API shape changed or the response was malformed.
+ * Thrown when the Notary returns a response that fails Zod validation.
+ * Indicates an API version mismatch or malformed response.
  */
 export class TollgateValidationError extends TollgateError {
   constructor(public readonly cause: unknown) {
@@ -115,12 +154,11 @@ export class TollgateValidationError extends TollgateError {
   }
 }
 
-// ── ON-CHAIN ERRORS ─────────────────────────────────────────────────────────
+// ── ON-CHAIN ─────────────────────────────────────────────────────────────────
 
 /**
  * Thrown when the Safe transaction reverts on-chain.
- * This should not happen if the token is valid — it indicates a Guard
- * configuration mismatch or the token was already consumed.
+ * Indicates a Guard configuration mismatch or the token was already consumed.
  */
 export class TollgateOnChainError extends TollgateError {
   constructor(

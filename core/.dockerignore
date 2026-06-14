@@ -1,0 +1,55 @@
+# Tollgate Notary — Docker ignore list
+# ─────────────────────────────────────────────────────────────────────────────
+# Files listed here are EXCLUDED from the Docker build context.
+# Smaller context = faster builds. More importantly: secrets never reach
+# the Docker daemon or get baked into image layers.
+
+# ── SECRETS — never send to Docker ───────────────────────────────────────────
+# These contain private keys and tokens. They must never appear in an image layer.
+.env
+data/
+data/notary.key
+data/agent.key
+data/audit.db
+data/backups/
+
+# ── BUILD ARTIFACTS ───────────────────────────────────────────────────────────
+# Go build cache and compiled binaries — the Dockerfile builds these fresh.
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# ── TEST FILES ────────────────────────────────────────────────────────────────
+# Test files are not needed in the production image.
+*_test.go
+testdata/
+
+# ── DEVELOPMENT FILES ─────────────────────────────────────────────────────────
+# Local development configs, IDE settings, editor artifacts.
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── LOGS ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── DOCUMENTATION ─────────────────────────────────────────────────────────────
+# Docs are not needed in the runtime image.
+docs/
+*.md
+README*
+CHANGELOG*
+LICENSE*
+
+# ── OTHER SERVICES ────────────────────────────────────────────────────────────
+# The contracts and SDK are separate — not part of the Go build.
+../contracts/
+../sdk/
