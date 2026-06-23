@@ -13,3 +13,8 @@ Thumbs.db
 
 /tollgate
 /tollgate.exe
+# Secrets
+data/*.key
+data/*.secret
+logs/
+.env

@@ -26,9 +26,9 @@ import type { NotaryResponse } from './src/types.js';
 // on your Gnosis Safe). For a 1-of-1 Safe on testnet that is your deployer key.
 // It is NOT your personal wallet key unless your wallet IS a Safe owner.
 
-const AGENT_TOKEN = 'v1.eyJhZ2VudF9pZCI6InRyYWRpbmctYm90LTAxIiwiaXNzdWVkX2F0IjoiMjAyNi0wNi0xMVQwMzo1NzoyNFoiLCJleHBpcmVzX2F0IjoiMjAyNi0wNy0xMVQwMzo1NzoyNFoiLCJ0b2tlbl9pZCI6ImE0MTBiZjBmLTlkZmUtNDNiMS1iZjNlLTgyZTU4ZDE3MWUwZCJ9.kxw4_Gz9g2QIgOw5qTYJJH2bzw3Mzo_QKHrDi53vA9Y';  // ← paste the v1.eyJ... token from Notary startup log
+const AGENT_TOKEN='***';
 
-const SAFE_ADDRESS  = '0x76Db37E62F080Fe2EAa78DF9089b7daCb155A5A6' as `0x${string}`;
+const SAFE_ADDRESS  = '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512' as `0x${string}`;
 const DESTINATION   = '0xDEF4560000000000000000000000000000000000' as `0x${string}`;
 const NOTARY_URL    = 'http://localhost:8080';
 const AGENT_ID      = 'trading-bot-01';

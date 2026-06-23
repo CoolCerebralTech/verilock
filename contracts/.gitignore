@@ -3,3 +3,8 @@ out/
 cache/
 broadcast/
 *.db
+# Deployment artifacts
+broadcast/
+cache/
+out/
+.env

@@ -9,14 +9,14 @@ import {TollgateGuard}   from "../src/TollgateGuard.sol";
  * @notice Deploys TollgateGuard to the target network.
  *
  * Required environment variables:
- *   TOLLGATE_NOTARY_ADDRESS  — from: go run ./cmd/server  (printed on boot)
- *   SAFE_ADDRESS             — your Gnosis Safe address on the target chain
- *   DEPLOYER_PRIVATE_KEY     — EOA that pays for deployment gas
+ *   TOLLGATE_NOTARY_ADDRESS  -- from: go run ./cmd/server  (printed on boot)
+ *   SAFE_ADDRESS             -- your Gnosis Safe address on the target chain
+ *   DEPLOYER_PRIVATE_KEY     -- EOA that pays for deployment gas
  *
  * Optional:
- *   EXPECTED_CHAIN_ID        — safety check; script aborts if chain doesn't match
+ *   EXPECTED_CHAIN_ID        -- safety check; script aborts if chain doesn't match
  *
- * Usage — local Anvil (single-owner Safe or EOA as Safe for testing):
+ * Usage -- local Anvil (single-owner Safe or EOA as Safe for testing):
  *   export TOLLGATE_NOTARY_ADDRESS=0x...
  *   export SAFE_ADDRESS=0x...
  *   forge script script/Deploy.s.sol \
@@ -24,7 +24,7 @@ import {TollgateGuard}   from "../src/TollgateGuard.sol";
  *     --private-key $DEPLOYER_PRIVATE_KEY \
  *     --broadcast
  *
- * Usage — Base Sepolia:
+ * Usage -- Base Sepolia:
  *   forge script script/Deploy.s.sol \
  *     --rpc-url base_sepolia \
  *     --private-key $DEPLOYER_PRIVATE_KEY \
@@ -39,19 +39,19 @@ import {TollgateGuard}   from "../src/TollgateGuard.sol";
  */
 contract Deploy is Script {
     function run() external {
-        // ── Required inputs ───────────────────────────────────────────────────
+        // -- Required inputs --------------------------------------------------
 
         address notaryAddress = vm.envAddress("TOLLGATE_NOTARY_ADDRESS");
         require(notaryAddress != address(0), "Deploy: TOLLGATE_NOTARY_ADDRESS not set");
 
-        // SAFE_ADDRESS is required — no silent fallback to msg.sender.
+        // SAFE_ADDRESS is required -- no silent fallback to msg.sender.
         // On Anvil, deploy a mock Safe or use the Safe SDK to create one first.
         // Falling back to msg.sender creates a Guard where only the deployer
-        // EOA is the "Safe" — checkTransaction will revert for any real Safe.
+        // EOA is the "Safe" -- checkTransaction will revert for any real Safe.
         address safeAddress = vm.envAddress("SAFE_ADDRESS");
-        require(safeAddress != address(0), "Deploy: SAFE_ADDRESS not set — set to your Gnosis Safe address");
+        require(safeAddress != address(0), "Deploy: SAFE_ADDRESS not set -- set to your Gnosis Safe address");
 
-        // ── Optional chain ID safety check ────────────────────────────────────
+        // -- Optional chain ID safety check ------------------------------------
         // Set EXPECTED_CHAIN_ID to prevent accidental mainnet deployments.
         // 84532 = Base Sepolia  |  8453 = Base mainnet
         uint256 expectedChainId = vm.envOr("EXPECTED_CHAIN_ID", uint256(0));
@@ -61,7 +61,7 @@ contract Deploy is Script {
                 string(abi.encodePacked(
                     "Deploy: wrong chain. Expected ",
                     vm.toString(expectedChainId),
-                    " got ",
+                    ", got ",
                     vm.toString(block.chainid)
                 ))
             );
@@ -73,7 +73,7 @@ contract Deploy is Script {
             console.log("         Set EXPECTED_CHAIN_ID=8453 to confirm this is intentional");
         }
 
-        // ── Pre-deploy summary ────────────────────────────────────────────────
+        // -- Pre-deploy summary -----------------------------------------------
 
         console.log("=== TOLLGATE GUARD DEPLOYMENT ===");
         console.log("Chain ID  :", block.chainid);
@@ -82,26 +82,26 @@ contract Deploy is Script {
         console.log("Deployer  :", msg.sender);
         console.log("=================================");
 
-        // ── Deploy ────────────────────────────────────────────────────────────
+        // -- Deploy -----------------------------------------------------------
 
         vm.startBroadcast();
         TollgateGuard guard = new TollgateGuard(notaryAddress, safeAddress);
         vm.stopBroadcast();
 
-        // ── Post-deploy verification ──────────────────────────────────────────
+        // -- Post-deploy verification -----------------------------------------
         // Confirm the constructor stored the correct values.
         // A wrong arg order or constructor bug is caught here, not silently.
 
         require(
             guard.notaryAddress() == notaryAddress,
-            "Deploy: notaryAddress mismatch — constructor stored wrong value"
+            "Deploy: notaryAddress mismatch -- constructor stored wrong value"
         );
         require(
             guard.safeAddress() == safeAddress,
-            "Deploy: safeAddress mismatch — constructor stored wrong value"
+            "Deploy: safeAddress mismatch -- constructor stored wrong value"
         );
 
-        // ── Output ────────────────────────────────────────────────────────────
+        // -- Output -----------------------------------------------------------
 
         console.log("=== DEPLOYMENT SUCCESSFUL ===");
         console.log("Guard address:");

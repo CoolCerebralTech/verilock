@@ -180,7 +180,16 @@ contract TollgateGuard is IGuard, TollgateTypes {
         // already in-flight, _pendingNonce will be non-zero. Block it.
         if (_pendingNonce != bytes32(0)) revert ReentrancyDetected();
 
-        // CHECK 4: Extract Approval Token from the end of tx data.
+        // CHECK 4: Skip token validation for guard removal (setGuard to zero address).
+        // This is Safe self-management — the Safe owners already authorized it.
+        // The guard must NOT block its own removal, or the Safe becomes permanently
+        // locked. This is a critical escape hatch.
+        if (_isGuardRemoval(to, data)) {
+            _pendingNonce = bytes32(uint256(1)); // marker, not a real nonce — skip consumption in checkAfterExecution
+            return;
+        }
+
+        // CHECK 5: Extract Approval Token from the end of tx data.
         ApprovalTokenData memory token = _extractToken(data);
 
         // CHECK 5: Token must not be expired.
@@ -234,6 +243,11 @@ contract TollgateGuard is IGuard, TollgateTypes {
     function checkAfterExecution(bytes32 txHash, bool success) external override {
         txHash; success;
         if (msg.sender != safeAddress) revert OnlySafe();
+        // Skip nonce consumption for guard removal — it used a dummy nonce.
+        if (_pendingNonce == bytes32(uint256(1))) {
+            _pendingNonce = bytes32(0);
+            return;
+        }
         if (_pendingNonce != bytes32(0)) {
             consumedNonces[_pendingNonce] = true;
             _pendingNonce = bytes32(0);
@@ -261,6 +275,31 @@ contract TollgateGuard is IGuard, TollgateTypes {
     function supportsInterface(bytes4 interfaceId) external pure override returns (bool) {
         return interfaceId == 0xe6d7a83a   // IGuard
             || interfaceId == 0x01ffc9a7;  // ERC-165
+    }
+
+    // ── INTERNAL: GUARD REMOVAL DETECTION ─────────────────────────────────────
+
+    /**
+     * @notice Detects if the given transaction is a Safe setGuard(address) call
+     *         targeting the zero address (i.e. removing this guard).
+     * @dev    This is the critical escape hatch — the guard must allow the Safe
+     *         to remove itself. Safe owners already authorized this through the
+     *         Safe's own multisig/signing process.
+     */
+    function _isGuardRemoval(address to, bytes calldata data) internal view returns (bool) {
+        // Must be sending to the Safe itself
+        if (to != safeAddress) return false;
+        
+        // Minimum length: 4-byte selector + 32-byte address argument
+        if (data.length < 36) return false;
+        
+        bytes4 setGuardSelector = bytes4(keccak256("setGuard(address)"));
+        bytes4 selector = bytes4(data[:4]);
+        if (selector != setGuardSelector) return false;
+        
+        // The argument (address parameter) must be zero address (removal)
+        address guardAddress = abi.decode(data[4:], (address));
+        return guardAddress == address(0);
     }
 
     // ── INTERNAL: TOKEN EXTRACTION ────────────────────────────────────────────

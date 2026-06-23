@@ -1,188 +1,112 @@
-# Tollgate
+# Tollgate — Blockchain Notary System for Gnosis Safe
 
-**The financial trust layer for AI agents on Base.**
+A three-layer security system that enforces policy-based approval on every transaction leaving a Gnosis Safe.
 
-Tollgate is a cryptographic notary that sits between every AI agent and every financial action it wants to take. It holds no customer funds. It holds no customer keys. Every transaction must carry a valid policy-approved signature before the blockchain will execute it.
-
-```typescript
-import { TollgateSigner } from '@tollgate/agent-sdk';
-
-const tollgate = await TollgateSigner.create({
-  notaryUrl:       'https://your-notary.example.com',
-  agentToken:      process.env.AGENT_TOKEN!,
-  agentId:         'trading-bot-01',
-  safeAddress:     '0xYourGnosisSafe',
-  ownerPrivateKey: process.env.OWNER_KEY!,
-});
-
-// This line does everything:
-// 1. Calls the Notary — evaluates your YAML policy
-// 2. Gets a cryptographic Approval Token
-// 3. Submits to your Gnosis Safe on Base
-// 4. The Guard verifies the signature on-chain
-// 5. Transaction executes — or reverts if anything is wrong
-const txHash = await tollgate.sendTransaction({
-  to:        '0xRecipientAddress',
-  value:     parseEther('0.1'),
-  amountUsd: 200,
-  purpose:   'defi_yield_optimization',
-});
-```
-
----
-
-## Why Tollgate
-
-AI agents are already moving money autonomously. The trust infrastructure around this is nearly nonexistent.
-
-**Without Tollgate:**
-- Your AI agent holds the private key directly
-- One compromised prompt and the wallet drains in seconds
-- No audit trail. No spend limits. No human review on large transactions
-- Crypto transactions are permanent — no chargebacks, no fraud department
-
-**With Tollgate:**
-- Your agent never touches the private key
-- Every transaction is evaluated against human-written YAML rules before execution
-- Spend limits, purpose binding, behavioral anomaly detection — enforced on-chain
-- Every decision is logged to an immutable audit trail with a cryptographic proof
-
----
-
-## How It Works
-
-Tollgate has three components that work together:
+## Architecture
 
 ```
-AI Agent
-   │
-   ▼
-┌─────────────────────────────────┐
-│  Phase 1: Notary (Go Server)    │  ← Reads your YAML policy
-│  POST /v1/action-check          │  ← Signs Approval Token if approved
-│  Holds zero customer funds      │  ← Logs every decision to audit trail
-└─────────────────────────────────┘
-   │  Signed Approval Token
-   ▼
-┌─────────────────────────────────┐
-│  Phase 3: SDK (TypeScript)      │  ← Encodes token into transaction data
-│  @tollgate/agent-sdk            │  ← Submits to Gnosis Safe on Base
-└─────────────────────────────────┘
-   │  Transaction + Token
-   ▼
-┌─────────────────────────────────┐
-│  Phase 2: Guard (Solidity)      │  ← Verifies signature on-chain
-│  TollgateGuard.sol              │  ← Reverts if no valid token present
-│  Attached to your Gnosis Safe   │  ← Cannot be bypassed — blockchain enforced
-└─────────────────────────────────┘
-   │  Execute or Revert
-   ▼
-Base Blockchain
+User / Agent → Notary (Policy) → Approval Token → Safe → Guard (Validation) → Transaction Executes
 ```
 
-The Notary is a **Notary, not a Bank**. It holds no customer funds and no customer keys. A breach of the Notary server yields only the policy evaluation logic and the audit log — customer funds remain protected by the Guard running permanently on-chain.
+| Component | Technology | Role |
+|-----------|-----------|------|
+| **Guard** | Solidity | On-chain validation — blocks unauthorized transactions |
+| **Notary** | Go | Off-chain policy engine — issues signed approval tokens |
+| **SDK** | TypeScript | Client library — encodes tokens into transaction data |
 
----
+## Quick Start
 
-## Repository Structure
+### Prerequisites
+
+- [Go 1.22+](https://go.dev/)
+- [Foundry](https://getfoundry.sh/)
+- [Node.js 18+](https://nodejs.org/)
+- A Gnosis Safe on [Base Sepolia](https://www.base.org/)
+
+### 1. Clone & Setup
+
+```bash
+git clone https://github.com/<your-username>/tollgate.git
+cd tollgate
+```
+
+### 2. Deploy the Guard
+
+```bash
+cd contracts
+cp .env.example .env
+# Edit .env: set your deployer key, Safe address, Notary address
+
+forge script script/Deploy.s.sol \
+  --rpc-url base_sepolia \
+  --private-key $DEPLOYER_PRIVATE_KEY \
+  --broadcast
+```
+
+### 3. Attach Guard to Safe
+
+Via Safe UI → Transaction Builder → `setGuard(address)` → Guard address
+
+### 4. Start the Notary
+
+```bash
+cd core
+cp .env.example .env
+# Edit .env: set your keyfiles, Safe address, Guard address
+
+generate_keyfile.sh  # create data/notary.key and data/agent.key
+go run ./cmd/setup    # first run
+go run ./cmd/server   # start notary
+```
+
+### 5. Test Transaction Flow
+
+```bash
+# Without token (should fail)
+cast send $SAFE "execTransaction(...)" --rpc-url base_sepolia
+
+# With Notary token (should succeed)
+# 1. Get approval token from Notary API
+# 2. Encode with SDK: encodeTransaction(calldata, token)
+# 3. Submit to Safe
+```
+
+## Testing
+
+```bash
+cd contracts
+forge test                          # Run all tests
+forge test --match-contract TollgateGuardRemovalTest  # Specific test
+```
+
+## Deployment History
+
+| Network | Safe | Guard | Notary | Status |
+|---------|------|-------|--------|--------|
+| Base Sepolia | `0xB7D6...7E11` | `0xB519...C140` | `0x98A4...F36c` | ✅ Active |
+
+## Project Structure
 
 ```
 tollgate/
-├── core/               ← Phase 1: Go Notary server
-├── contracts/          ← Phase 2: Solidity Guard contract
-├── sdk/                ← Phase 3: TypeScript SDK
-├── docs/               ← Documentation
-│   ├── quickstart.md
-│   ├── policy-reference.md
-│   └── architecture.md
-└── examples/           ← Working examples you can run
-    ├── simple-agent/
-    └── defi-agent/
+├── contracts/          # Solidity: Guard contract
+│   ├── src/TollgateGuard.sol
+│   ├── script/Deploy.s.sol Buddies  └── test/
+├── core/               # Go: Notary server
+│   ├── cmd/server/
+│   ├── internal/
+│   └── policies/policy.yaml
+└── sdk/                # TypeScript: Client library
+    └── src/encoder.ts
 ```
 
----
+## Documentation
 
-## Quickstart
-
-**→ See [docs/quickstart.md](docs/quickstart.md) for the full setup guide.**
-
-Short version:
-
-```bash
-# 1. Clone
-git clone https://github.com/CoolCerebralTech/tollgate.git
-cd tollgate
-
-# 2. Start the Notary
-cd core
-cp .env.example .env   # fill in your signing key
-go run ./cmd/server/main.go
-
-# 3. Install the SDK
-cd ../sdk
-npm install
-```
-
----
-
-## Policy — Human-Written YAML Rules
-
-The Notary evaluates every transaction against a policy file you write and sign off on:
-
-```yaml
-agents:
-  - id: "trading-bot-01"
-    enabled: true
-    spend_limits:
-      max_per_transaction_usd: 500
-      max_per_day_usd: 5000
-      auto_approve_below_usd: 50
-      require_human_above_usd: 100
-    allowed_destinations:
-      - "0xYourWhitelistedContract"
-    allowed_purposes:
-      - "defi_yield_optimization"
-    behavioral_risk_threshold: 0.7
-```
-
-Every version of every policy file is stored with a timestamp and the identity of who changed it. When a regulator asks what rules governed a specific decision, Tollgate provides the exact policy version active at that moment — cryptographically proven unaltered.
-
-→ See [docs/policy-reference.md](docs/policy-reference.md) for the full policy schema.
-
----
-
-## Network
-
-Tollgate targets **Base** (Coinbase's L2) exclusively.
-
-| Network | Chain ID | Status |
-|---------|----------|--------|
-| Base Mainnet | 8453 | Phase 5 |
-| Base Sepolia (testnet) | 84532 | Active |
-
----
-
-## Development Status
-
-| Phase | Component | Status |
-|-------|-----------|--------|
-| Phase 1 | Go Notary server | ✅ Complete |
-| Phase 2 | Solidity Guard contract | ✅ Complete |
-| Phase 3 | TypeScript SDK | ✅ Complete |
-| Phase 4 | Docker deployment | 🔄 In progress |
-| Phase 5 | Design partner pilots | ⏳ Planned |
-
----
-
-## Security
-
-- **The Notary holds no customer funds and no customer keys.** A server breach cannot drain customer wallets.
-- **The Guard runs permanently on-chain.** Even if the Notary server is destroyed, the Guard continues protecting the vault.
-- **Fail closed by default.** If the policy file is unreadable, if any internal error occurs, or if an agent is unknown — the answer is always NO.
-- **Every decision is audited.** Approved and denied — every evaluation is written to an immutable SQLite log before any response is sent.
-
----
+- [Architecture](docs/architecture.md)
+- [Deployment Guide](docs/deployment.md)
+- [API Reference](docs/api.md)
+- [Testing Guide](docs/testing.md)
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT

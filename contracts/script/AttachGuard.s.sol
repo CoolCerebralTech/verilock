@@ -61,7 +61,7 @@ contract AttachGuard is Script {
         TollgateGuard guard = TollgateGuard(guardAddress);
         require(
             guard.safeAddress() == safeAddress,
-            "AttachGuard: Guard.safeAddress() does not match SAFE_ADDRESS — deploy a new Guard for this Safe"
+            "AttachGuard: Guard.safeAddress() does not match SAFE_ADDRESS - deploy a new Guard for this Safe"
         );
 
         console.log("=== ATTACHING GUARD TO SAFE ===");
@@ -89,7 +89,7 @@ contract AttachGuard is Script {
         (bool ok, ) = safeAddress.call(
             abi.encodeWithSelector(SET_GUARD_SELECTOR, guardAddress)
         );
-        require(ok, "AttachGuard: direct setGuard call failed — are you running Anvil with msg.sender == Safe?");
+        require(ok, "AttachGuard: direct setGuard call failed - are you running Anvil with msg.sender == Safe?");
 
         // Verify attachment.
         (bool readOk, bytes memory result) = safeAddress.staticcall(
@@ -97,7 +97,7 @@ contract AttachGuard is Script {
         );
         require(readOk, "AttachGuard: getGuard() call failed");
         address attached = abi.decode(result, (address));
-        require(attached == guardAddress, "AttachGuard: verification failed — getGuard() returned wrong address");
+        require(attached == guardAddress, "AttachGuard: verification failed - getGuard() returned wrong address");
 
         console.log("Guard attached and verified.");
         console.log("getGuard() =");

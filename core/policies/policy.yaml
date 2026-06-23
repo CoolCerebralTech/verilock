@@ -59,7 +59,7 @@ agents:
     # Explicit destination allow list — every address must be 0x-prefixed.
     # DEVELOPMENT PLACEHOLDER: replace with real contract addresses before production.
     allowed_destinations:
-      - "0xDEF4560000000000000000000000000000000000" # placeholder — replace before mainnet
+      - "0x090ff5f77950C069A5C39A60aB2a8cAeBC2ED563" # owner MetaMask wallet
 
     # Explicit destination deny list — checked BEFORE the allow list.
     blocked_destinations:
@@ -80,7 +80,7 @@ agents:
     # the agent is eligible for Tier 1 auto-approval.
     # Until warm, all requests route to Tier 3 (human approval).
     # Set to 0 to disable cold-start protection (not recommended).
-    min_data_points_for_auto_approve: 20
+    min_data_points_for_auto_approve: 0  # TEMP: set to 0 for testing
 
   # ── Agent: Canary (startup self-test) ───────────────────────────────────────
   # This agent is used exclusively by RunCanary() on startup.

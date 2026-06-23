@@ -24,3 +24,13 @@ sdk/dist/
 Thumbs.db
 Thumbs.db:encdata
 EOF
+# Secrets — NEVER commit
+.env
+.env.local
+.env.production
+data/*.key
+data/*.secret
+cache/
+broadcast/
+
+git/
