@@ -2,12 +2,12 @@
 pragma solidity ^0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
-import {TollgateGuard} from "../src/TollgateGuard.sol";
-import {TollgateTypes} from "../src/TollgateTypes.sol";
+import {VerilockGuard} from "../src/VerilockGuard.sol";
+import {VerilockTypes} from "../src/VerilockTypes.sol";
 
 /**
- * @title  TollgateGuard Test Suite
- * @notice Full coverage of every verification path in TollgateGuard.
+ * @title  VerilockGuard Test Suite
+ * @notice Full coverage of every verification path in VerilockGuard.
  *
  * Strategy:
  *   - A test private key (TEST_NOTARY_KEY) is used to sign tokens.
@@ -16,7 +16,7 @@ import {TollgateTypes} from "../src/TollgateTypes.sol";
  *   - A different key (WRONG_KEY) produces invalid signatures.
  *   - The real Phase 1 key is never used in tests.
  */
-contract TollgateGuardTest is Test {
+contract VerilockGuardTest is Test {
 
     // ── Test accounts ──────────────────────────────────────────────────────────
     uint256 constant TEST_NOTARY_KEY = 0xA11CE;
@@ -28,9 +28,9 @@ contract TollgateGuardTest is Test {
     address attacker;     // random EOA
 
     // ── Contract under test ────────────────────────────────────────────────────
-    TollgateGuard guard;
+    VerilockGuard guard;
 
-    // ── EIP-712 type hash (must match TollgateTypes exactly) ──────────────────
+    // ── EIP-712 type hash (must match VerilockTypes exactly) ──────────────────
     bytes32 constant APPROVAL_TOKEN_TYPEHASH = keccak256(
         "ApprovalToken(bytes32 tokenId,string agentId,address destination,uint256 amountRaw,uint256 chainId,bytes32 nonce,uint256 expiresAt,bytes32 policyHash)"
     );
@@ -55,7 +55,7 @@ contract TollgateGuardTest is Test {
 
         // Deploy the Guard with our test notary and safe addresses.
         vm.prank(safeSim);
-        guard = new TollgateGuard(testNotary, safeSim);
+        guard = new VerilockGuard(testNotary, safeSim);
 
         // Default token fields used across multiple tests.
         defaultTokenId   = keccak256("token-id-001");
@@ -87,13 +87,13 @@ contract TollgateGuardTest is Test {
     }
 
     function test_deployment_rejectsZeroNotary() public {
-        vm.expectRevert(TollgateGuard.ZeroAddress.selector);
-        new TollgateGuard(address(0), safeSim);
+        vm.expectRevert(VerilockGuard.ZeroAddress.selector);
+        new VerilockGuard(address(0), safeSim);
     }
 
     function test_deployment_rejectsZeroSafe() public {
-        vm.expectRevert(TollgateGuard.ZeroAddress.selector);
-        new TollgateGuard(testNotary, address(0));
+        vm.expectRevert(VerilockGuard.ZeroAddress.selector);
+        new VerilockGuard(testNotary, address(0));
     }
 
     function test_deployment_supportsIGuardInterface() public view {
@@ -119,7 +119,7 @@ contract TollgateGuardTest is Test {
 
         // Expect the TransactionApproved event.
         vm.expectEmit(true, true, false, false);
-        emit TollgateGuard.TransactionApproved(
+        emit VerilockGuard.TransactionApproved(
             defaultTokenId,
             destination,
             defaultAmountRaw,
@@ -160,7 +160,7 @@ contract TollgateGuardTest is Test {
     function test_reject_noToken() public {
         // Empty data — no prefix.
         vm.prank(safeSim);
-        vm.expectRevert(TollgateGuard.TokenMissing.selector);
+        vm.expectRevert(VerilockGuard.TokenMissing.selector);
         guard.checkTransaction(
             destination, defaultAmountRaw, "",
             0, 0, 0, 0, address(0), payable(address(0)), "", safeSim
@@ -177,7 +177,7 @@ contract TollgateGuardTest is Test {
         );
 
         vm.prank(safeSim);
-        vm.expectRevert(TollgateGuard.TokenExpired.selector);
+        vm.expectRevert(VerilockGuard.TokenExpired.selector);
         guard.checkTransaction(
             destination, defaultAmountRaw, data,
             0, 0, 0, 0, address(0), payable(address(0)), "", safeSim
@@ -200,7 +200,7 @@ contract TollgateGuardTest is Test {
         guard.checkAfterExecution(bytes32(0), true);
 
         // Second use — same nonce, must revert.
-        vm.expectRevert(TollgateGuard.TokenNonceReplayed.selector);
+        vm.expectRevert(VerilockGuard.TokenNonceReplayed.selector);
         guard.checkTransaction(
             destination, defaultAmountRaw, data,
             0, 0, 0, 0, address(0), payable(address(0)), "", safeSim
@@ -217,7 +217,7 @@ contract TollgateGuardTest is Test {
         );
 
         vm.prank(safeSim);
-        vm.expectRevert(TollgateGuard.SignatureInvalid.selector);
+        vm.expectRevert(VerilockGuard.SignatureInvalid.selector);
         guard.checkTransaction(
             destination, defaultAmountRaw, data,
             0, 0, 0, 0, address(0), payable(address(0)), "", safeSim
@@ -251,7 +251,7 @@ contract TollgateGuardTest is Test {
         );
 
         vm.prank(safeSim);
-        vm.expectRevert(TollgateGuard.DestinationMismatch.selector);
+        vm.expectRevert(VerilockGuard.DestinationMismatch.selector);
         guard.checkTransaction(
             wrongDest, defaultAmountRaw, data, // but actual to = wrongDest
             0, 0, 0, 0, address(0), payable(address(0)), "", safeSim
@@ -266,7 +266,7 @@ contract TollgateGuardTest is Test {
         );
 
         vm.prank(safeSim);
-        vm.expectRevert(TollgateGuard.AmountMismatch.selector);
+        vm.expectRevert(VerilockGuard.AmountMismatch.selector);
         guard.checkTransaction(
             destination, 2 ether, data, // actual value = 2 ether
             0, 0, 0, 0, address(0), payable(address(0)), "", safeSim
@@ -282,7 +282,7 @@ contract TollgateGuardTest is Test {
         );
 
         vm.prank(safeSim);
-        vm.expectRevert(TollgateGuard.ChainIdMismatch.selector);
+        vm.expectRevert(VerilockGuard.ChainIdMismatch.selector);
         guard.checkTransaction(
             destination, defaultAmountRaw, data,
             0, 0, 0, 0, address(0), payable(address(0)), "", safeSim
@@ -303,7 +303,7 @@ contract TollgateGuardTest is Test {
 
         // Even a valid token is blocked when paused.
         vm.prank(safeSim);
-        vm.expectRevert(TollgateGuard.GuardIsPaused.selector);
+        vm.expectRevert(VerilockGuard.GuardIsPaused.selector);
         guard.checkTransaction(
             destination, defaultAmountRaw, data,
             0, 0, 0, 0, address(0), payable(address(0)), "", safeSim
@@ -319,7 +319,7 @@ contract TollgateGuardTest is Test {
 
         // Called by attacker, not the Safe.
         vm.prank(attacker);
-        vm.expectRevert(TollgateGuard.OnlySafe.selector);
+        vm.expectRevert(VerilockGuard.OnlySafe.selector);
         guard.checkTransaction(
             destination, defaultAmountRaw, data,
             0, 0, 0, 0, address(0), payable(address(0)), "", attacker
@@ -342,7 +342,7 @@ contract TollgateGuardTest is Test {
 
     function test_admin_nonOwnerCannotPause() public {
         vm.prank(attacker);
-        vm.expectRevert(TollgateGuard.OnlyOwner.selector);
+        vm.expectRevert(VerilockGuard.OnlyOwner.selector);
         guard.setPaused(true);
     }
 
@@ -375,7 +375,7 @@ contract TollgateGuardTest is Test {
         // Build domain separator matching what the Guard computed in constructor.
         bytes32 domainSep = keccak256(abi.encode(
             DOMAIN_TYPEHASH,
-            keccak256(bytes("Tollgate")),
+            keccak256(bytes("Verilock")),
             keccak256(bytes("1")),
             block.chainid,            // must match Guard's chain
             address(guard)            // verifyingContract = Guard address

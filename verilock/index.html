@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verilock — Blockchain Notary System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav>
+        <div class="container nav-content">
+            <div class="logo">
+                <div class="logo-icon">V</div>
+                <span>VERILOCK</span>
+            </div>
+            <div class="nav-links">
+                <a href="#architecture">Architecture</a>
+                <a href="#how-it-works">How it Works</a>
+                <a href="#deployment">Deployment</a>
+            </div>
+            <a class="nav-cta" href="https://github.com/CoolCerebralTech/tollgate" target="_blank">GitHub</a>
+        </div>
+    </nav>
+
+    <div class="hero">
+        <div class="container">
+            <div class="hero-badge">
+                <span class="pulse"></span>
+                Live on Base Sepolia Testnet
+            </div>
+            <h1>Policy-Based Security for Smart Contract Wallets</h1>
+            <p>A three-layer notary system that enforces spend limits, destination checks, and approval workflows on every transaction leaving a Gnosis Safe.</p>
+            <div class="hero-cta">
+                <a class="btn btn-primary" href="#demo">See Live Demo</a>
+                <a class="btn btn-secondary" href="#architecture">How it Works</a>
+            </div>
+            <div class="status-bar" id="statusBar">
+                <!-- Filled by JS -->
+            </div>
+        </div>
+    </div>
+
+    <section id="architecture" class="section">
+        <div class="container">
+            <h2 class="section-title">Architecture</h2>
+            <p class="section-sub">Three layers — each with a specific responsibility</p>
+            <div class="arch-flow" id="archFlow">
+                <!-- Filled by JS -->
+            </div>
+        </div>
+    </section>
+
+    <section id="how-it-works" class="section">
+        <div class="container">
+            <h2 class="section-title">How It Works</h2>
+            <p class="section-sub">Every transaction goes through this flow</p>
+            <div id="stepsContainer"></div>
+        </div>
+    </section>
+
+    <section id="demo" class="section">
+        <div class="container">
+            <h2 class="section-title">Live Demo</h2>
+            <p class="section-sub">See it in action on Base Sepolia</p>
+            <div class="demo-section">
+                <div class="demo-tabs">
+                    <button class="demo-tab active" onclick="showTab('blocked')">Blocked (No Token)</button>
+                    <button class="demo-tab" onclick="showTab('approved')">Approved (With Token)</button>
+                    <button class="demo-tab" onclick="showTab('code')">Code</button>
+                </div>
+                <div id="tab-blocked" class="demo-content active">
+                    <div class="code-block">
+                        <span class="comment">// Try sending 0.02 ETH without approval token</span><br>
+                        <span class="comment">// Safe UI calls Guard.checkTransaction()</span><br>
+                        <span class="comment">// → Guard reverts with TokenMissing()</span><br><br>
+                        Safe.sendTransaction({<br>
+                        &nbsp;&nbsp;to: "0x090f...ED563",<br>
+                        &nbsp;&nbsp;value: "0.02 ETH",<br>
+                        &nbsp;&nbsp;data: "0x" &nbsp;<span class="comment">// No token! Guard will reject.</span><br>
+                        })<br><br>
+                        <span class="comment">// Result: REVERTED</span><br>
+                        <span class="comment">// Safe UI shows: "Simulation Error: Reverted"</span>
+                    </div>
+                </div>
+                <div id="tab-approved" class="demo-content">
+                    <div class="code-block">
+                        <span class="comment">// 1. Get approval from Notary</span><br>
+                        const token = await notary.approve({<br>
+                        &nbsp;&nbsp;agent_id: "trading-bot-01",<br>
+                        &nbsp;&nbsp;destination: "0x090f...ED563",<br>
+                        &nbsp;&nbsp;amount_usd: 20,<br>
+                        &nbsp;&nbsp;purpose: "defi_yield_optimization"<br>
+                        });<br><br>
+                        <span class="comment">// 2. Encode token into data</span><br>
+                        const data = TollgateSDK.encodeTransaction(calldata, token);<br><br>
+                        <span class="comment">// 3. Submit with token</span><br>
+                        await Safe.sendTransaction({ to, value, data });<br><br>
+                        <span class="comment">// Result: SUCCESS</span>
+                    </div>
+                </div>
+                <div id="tab-code" class="demo-content">
+                    <div class="code-block">
+                        <span class="comment">// Tollgate Guard — Solidity</span><br>
+                        function checkTransaction(...) external {<br>
+                        &nbsp;&nbsp;<span class="comment">// Only Safe can call</span><br>
+                        &nbsp;&nbsp;require(msg.sender == safeAddress);<br><br>
+                        &nbsp;&nbsp;<span class="comment">// Extract token from calldata</span><br>
+                        &nbsp;&nbsp;ApprovalTokenData memory token = _extractToken(data);<br><br>
+                        &nbsp;&nbsp;<span class="comment">// Verify Notary signature (EIP-712)</span><br>
+                        &nbsp;&nbsp;address recovered = _recoverSigner(token);<br>
+                        &nbsp;&nbsp;require(recovered == notaryAddress);<br><br>
+                        &nbsp;&nbsp;<span class="comment">// Check expiry, nonce, destination match...</span><br>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="deployment" class="section">
+        <div class="container">
+            <h2 class="section-title">Base Sepolia Deployment</h2>
+            <p class="section-sub">Fully functional testnet deployment</p>
+            <div class="deployment-grid" id="deploymentGrid"></div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Key Features</h2>
+            <p class="section-sub">What makes Verilock secure</p>
+            <div class="features" id="featuresGrid"></div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>Verilock — Final Year Project</p>
+            <p><a href="https://github.com/CoolCerebralTech/tollgate" style="color: #3b82f6; text-decoration: none;">GitHub</a></p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

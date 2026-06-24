@@ -2,13 +2,13 @@
 pragma solidity ^0.8.24;
 
 import {IGuard}       from "./interfaces/IGuard.sol";
-import {TollgateTypes} from "./TollgateTypes.sol";
+import {VerilockTypes} from "./VerilockTypes.sol";
 
 /**
- * @title  TollgateGuard
- * @notice Gnosis Safe Guard that enforces Tollgate policy approval on every
+ * @title  VerilockGuard
+ * @notice Gnosis Safe Guard that enforces Verilock policy approval on every
  *         outgoing transaction. Every transaction leaving the Safe must carry
- *         a valid EIP-712 Approval Token signed by the registered Tollgate
+ *         a valid EIP-712 Approval Token signed by the registered Verilock
  *         Notary. Without a valid token the transaction reverts before
  *         execution — the money never moves.
  *
@@ -38,12 +38,12 @@ import {TollgateTypes} from "./TollgateTypes.sol";
  *
  *         checkAfterExecution marks the nonce as consumed — replay prevention.
  */
-contract TollgateGuard is IGuard, TollgateTypes {
+contract VerilockGuard is IGuard, VerilockTypes {
 
     // ── CONSTANTS ─────────────────────────────────────────────────────────────
 
     /// @dev 4-byte prefix the SDK appends before the ABI-encoded token.
-    ///      bytes4(keccak256("tollgate.approval.v1")) truncated to 4 bytes.
+    ///      bytes4(keccak256("verilock.approval.v1")) truncated to 4 bytes.
     ///      The token is ALWAYS appended as the LAST element of tx data,
     ///      so extraction uses a fixed suffix position, not a search.
     bytes4 internal constant TOKEN_PREFIX = 0x544F4C47;
@@ -55,7 +55,7 @@ contract TollgateGuard is IGuard, TollgateTypes {
 
     // ── IMMUTABLE STATE ───────────────────────────────────────────────────────
 
-    /// @notice The Tollgate Notary address — only signatures from this address
+    /// @notice The Verilock Notary address — only signatures from this address
     ///         are accepted. Pass the address printed by: go run ./cmd/server
     ///         Do NOT hardcode here — the address changes when keys rotate.
     address public immutable notaryAddress;
@@ -125,7 +125,7 @@ contract TollgateGuard is IGuard, TollgateTypes {
     // ── CONSTRUCTOR ───────────────────────────────────────────────────────────
 
     /**
-     * @param _notaryAddress Tollgate Notary public address.
+     * @param _notaryAddress Verilock Notary public address.
      *                       Get this from: go run ./cmd/server (printed on boot).
      *                       After deployment, set GUARD_CONTRACT_ADDRESS in .env
      *                       to address(this) so the Notary's domain separator matches.
@@ -172,7 +172,7 @@ contract TollgateGuard is IGuard, TollgateTypes {
 
         // CHECK 3: Reject DELEGATECALL (operation == 1).
         // A delegatecall from the Safe to a malicious contract could bypass
-        // Guard logic or drain the Safe without a valid Tollgate token.
+        // Guard logic or drain the Safe without a valid Verilock token.
         if (operation != 0) revert DelegateCallNotAllowed();
 
         // CHECK 3b: Reentrancy guard on _pendingNonce.

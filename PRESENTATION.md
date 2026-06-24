@@ -1,4 +1,4 @@
-# Tollgate — Blockchain Notary System
+# Verilock — Blockchain Notary System
 
 ## Final Year Project Presentation
 
@@ -16,7 +16,7 @@ Current smart contract wallets (Gnosis Safe) have **no built-in policy enforceme
 - No spend limits, destination checks, or approval workflows
 - Blind signing — signers don't know what they're approving
 
-## Solution: Tollgate
+## Solution: Verilock
 
 A **three-layer security system** that enforces policy on every Safe transaction:
 
@@ -101,7 +101,7 @@ forge script Deploy.s.sol --broadcast
 
 ## Resources
 
-- **GitHub**: github.com/[username]/tollgate
+- **GitHub**: github.com/[username]/verilock
 - **Live on Base Sepolia**:
   - Safe: `0xB7D6...7E11`
   - Guard: `0xB519...C140`

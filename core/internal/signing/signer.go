@@ -9,7 +9,7 @@ import (
 	gocrypto "github.com/ethereum/go-ethereum/crypto"
 )
 
-// Signer holds Tollgate's ECDSA secp256k1 private key and exposes only
+// Signer holds Verilock's ECDSA secp256k1 private key and exposes only
 // what the rest of the application needs: a public address and a sign function.
 //
 // SECURITY CONTRACT:
@@ -32,7 +32,7 @@ type Config struct {
 	// Must come from the keyfile or secrets manager — never hardcoded.
 	PrivateKeyHex string
 
-	// GuardContractAddress is the 0x-prefixed address of the deployed TollgateGuard.
+	// GuardContractAddress is the 0x-prefixed address of the deployed VerilockGuard.
 	// Used in the EIP-712 domain separator. Tokens signed with the wrong address
 	// will fail on-chain verification — this must match the deployed contract exactly.
 	GuardContractAddress string
@@ -51,7 +51,7 @@ func New(cfg Config) (*Signer, error) {
 	if len(cfg.PrivateKeyHex) != 64 {
 		// Report length only — never echo the key value itself in errors.
 		return nil, fmt.Errorf(
-			"signing: private key must be 64 hex characters (got %d) — check TOLLGATE_SIGNING_KEY_HEX",
+			"signing: private key must be 64 hex characters (got %d) — check VERILOCK_SIGNING_KEY_HEX",
 			len(cfg.PrivateKeyHex),
 		)
 	}
@@ -86,7 +86,7 @@ func New(cfg Config) (*Signer, error) {
 	}, nil
 }
 
-// PublicAddress returns Tollgate's Ethereum address derived from the signing key.
+// PublicAddress returns Verilock's Ethereum address derived from the signing key.
 // This is the address the on-chain Guard compares against ecrecover output.
 // Safe to log and display.
 func (s *Signer) PublicAddress() string {

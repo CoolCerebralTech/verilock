@@ -1,5 +1,5 @@
 // cmd/server/main.go
-// Tollgate Notary — main entry point.
+// Verilock Notary — main entry point.
 // Wires all modules and starts the HTTP gateway.
 //
 // Run:
@@ -16,14 +16,14 @@ import (
 	"os"
 	"time"
 
-	"tollgate/internal/agent"
-	"tollgate/internal/audit"
-	"tollgate/internal/baseline"
-	"tollgate/internal/config"
-	"tollgate/internal/gateway"
-	"tollgate/internal/policy"
-	"tollgate/internal/ratelimit"
-	"tollgate/internal/signing"
+	"verilock/internal/agent"
+	"verilock/internal/audit"
+	"verilock/internal/baseline"
+	"verilock/internal/config"
+	"verilock/internal/gateway"
+	"verilock/internal/policy"
+	"verilock/internal/ratelimit"
+	"verilock/internal/signing"
 
 	"go.uber.org/zap"
 )
@@ -205,7 +205,7 @@ func main() {
 	})
 
 	// ── Step 15: Start serving ─────────────────────────────────────────────────
-	log.Info("tollgate notary starting",
+	log.Info("verilock notary starting",
 		zap.Int("port", cfg.ServerPort),
 		zap.String("public_address", signer.PublicAddress()),
 		zap.Uint64("chain_id", cfg.ChainID),

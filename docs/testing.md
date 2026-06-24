@@ -8,7 +8,7 @@
 cd contracts
 forge test               # Run all tests
 forge test -vvv          # Verbose output
-forge test --match-contract TollgateGuardRemovalTest  # Specific test
+forge test --match-contract VerilockGuardRemovalTest  # Specific test
 ```
 
 ### Test Coverage
@@ -38,7 +38,7 @@ function test_something() public {
     data = abi.encodePacked(data, TOKEN_PREFIX, token);
     
     // Act + Assert
-    vm.expectRevert(TollgateGuard.TokenMissing.selector);
+    vm.expectRevert(VerilockGuard.TokenMissing.selector);
     guard.checkTransaction(destination, amount, data, ...);
 }
 ```

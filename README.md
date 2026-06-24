@@ -1,4 +1,4 @@
-# Tollgate — Blockchain Notary System for Gnosis Safe
+# Verilock — Blockchain Notary System for Gnosis Safe
 
 A three-layer security system that enforces policy-based approval on every transaction leaving a Gnosis Safe.
 
@@ -26,8 +26,8 @@ User / Agent → Notary (Policy) → Approval Token → Safe → Guard (Validati
 ### 1. Clone & Setup
 
 ```bash
-git clone https://github.com/<your-username>/tollgate.git
-cd tollgate
+git clone https://github.com/<your-username>/verilock.git
+cd verilock
 ```
 
 ### 2. Deploy the Guard
@@ -76,7 +76,7 @@ cast send $SAFE "execTransaction(...)" --rpc-url base_sepolia
 ```bash
 cd contracts
 forge test                          # Run all tests
-forge test --match-contract TollgateGuardRemovalTest  # Specific test
+forge test --match-contract VerilockGuardRemovalTest  # Specific test
 ```
 
 ## Deployment History
@@ -88,9 +88,9 @@ forge test --match-contract TollgateGuardRemovalTest  # Specific test
 ## Project Structure
 
 ```
-tollgate/
+verilock/
 ├── contracts/          # Solidity: Guard contract
-│   ├── src/TollgateGuard.sol
+│   ├── src/VerilockGuard.sol
 │   ├── script/Deploy.s.sol Buddies  └── test/
 ├── core/               # Go: Notary server
 │   ├── cmd/server/

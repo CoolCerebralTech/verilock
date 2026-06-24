@@ -10,7 +10,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Config holds all validated runtime configuration for the Tollgate Notary.
+// Config holds all validated runtime configuration for the Verilock Notary.
 // Populated once at startup via Load(). Never mutated after Load() returns.
 //
 // SECURITY CONTRACT:
@@ -65,7 +65,7 @@ type Config struct {
 
 	// ── Network / chain ───────────────────────────────────────────────────────
 	ChainID              uint64 // EVM chain ID — must match the Guard contract's deployment chain
-	GuardContractAddress string // 0x-prefixed Ethereum address of the deployed TollgateGuard
+	GuardContractAddress string // 0x-prefixed Ethereum address of the deployed VerilockGuard
 	SafeAddress          string // 0x-prefixed Gnosis Safe address this Notary serves
 
 	// ── Runtime ───────────────────────────────────────────────────────────────
@@ -77,8 +77,8 @@ type Config struct {
 // validates every value, and returns a fully verified Config.
 //
 // Key loading priority (first found wins):
-//  1. TOLLGATE_SIGNING_KEY_HEX env var   (set by secrets manager in production)
-//  2. TOLLGATE_KEYFILE_PATH file         (written by cmd/setup, chmod 600)
+//  1. VERILOCK_SIGNING_KEY_HEX env var   (set by secrets manager in production)
+//  2. VERILOCK_KEYFILE_PATH file         (written by cmd/setup, chmod 600)
 //
 // Same priority applies to AGENT_TOKEN_SECRET / AGENT_SECRET_KEYFILE_PATH.
 //
@@ -125,8 +125,8 @@ func Load() (*Config, error) {
 	// Errors report metadata only; the raw value is never echoed back.
 
 	if signingKey, err := loadSecret(
-		"TOLLGATE_SIGNING_KEY_HEX",
-		"TOLLGATE_KEYFILE_PATH",
+		"VERILOCK_SIGNING_KEY_HEX",
+		"VERILOCK_KEYFILE_PATH",
 		64, 64,
 	); err != nil {
 		errs = append(errs, err.Error())
@@ -306,7 +306,7 @@ func Load() (*Config, error) {
 
 	if len(errs) > 0 {
 		return nil, fmt.Errorf(
-			"Tollgate cannot start — %d configuration error(s):\n  ✗ %s",
+			"Verilock cannot start — %d configuration error(s):\n  ✗ %s",
 			len(errs),
 			strings.Join(errs, "\n  ✗ "),
 		)
@@ -321,7 +321,7 @@ func (c *Config) PrintStartupSummary() {
 	sep := "  ──────────────────────────────────────"
 
 	fmt.Println()
-	fmt.Println("  ╷ TOLLGATE NOTARY")
+	fmt.Println("  ╷ VERILOCK NOTARY")
 	fmt.Println("  ╵ runtime config")
 	fmt.Println(sep)
 	fmt.Printf("  %-28s %s\n", "environment", c.Environment)

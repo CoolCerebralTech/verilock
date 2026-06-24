@@ -1,5 +1,5 @@
 {
-  "name": "@tollgate/agent-sdk",
+  "name": "@verilock/agent-sdk",
   "version": "0.1.0",
   "description": "The financial trust layer for AI agents on Base",
   "main": "./dist/index.cjs",

@@ -1,4 +1,4 @@
-module tollgate
+module verilock
 
 go 1.26.3
 

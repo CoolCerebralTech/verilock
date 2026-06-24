@@ -2,10 +2,10 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import {TollgateGuard} from "../src/TollgateGuard.sol";
+import {VerilockGuard} from "../src/VerilockGuard.sol";
 
 /**
- * @title  TollgateGuardRemovalTest
+ * @title  VerilockGuardRemovalTest
  * @notice Tests that the guard's _isGuardRemoval bypass works correctly.
  *         This test MUST pass before deploying to production.
  *
@@ -14,13 +14,13 @@ import {TollgateGuard} from "../src/TollgateGuard.sol";
  *   2. setGuard(someOtherGuard) from Safe -> fails with TokenMissing
  *   3. Normal tx without token from Safe -> FAIL with TokenMissing
  */
-contract TollgateGuardRemovalTest is Test {
-    TollgateGuard public guard;
+contract VerilockGuardRemovalTest is Test {
+    VerilockGuard public guard;
     address public notary = address(0x1234);  // dummy notary
     address public safe = address(0x5AFE);    // dummy Safe address
 
     function setUp() public {
-        guard = new TollgateGuard(notary, safe);
+        guard = new VerilockGuard(notary, safe);
     }
 
     // --- Test 1: setGuard(0x0) MUST pass (escape hatch) ---
@@ -59,7 +59,7 @@ contract TollgateGuardRemovalTest is Test {
 
         vm.prank(safe);
         // This should FAIL (no token provided)
-        vm.expectRevert(TollgateGuard.TokenMissing.selector);
+        vm.expectRevert(VerilockGuard.TokenMissing.selector);
         guard.checkTransaction(
             safe, 0, data, 0,
             0, 0, 0, address(0), payable(address(0)), hex"", address(0)
@@ -71,7 +71,7 @@ contract TollgateGuardRemovalTest is Test {
         bytes memory data = hex"12345678"; // random calldata, no token
 
         vm.prank(safe);
-        vm.expectRevert(TollgateGuard.TokenMissing.selector);
+        vm.expectRevert(VerilockGuard.TokenMissing.selector);
         guard.checkTransaction(
             address(0xDEAD), // some destination
             1000,            // some value

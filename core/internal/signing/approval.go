@@ -13,9 +13,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// ApprovalToken is the signed artifact Tollgate returns on a successful evaluation.
+// ApprovalToken is the signed artifact Verilock returns on a successful evaluation.
 // The Guard smart contract verifies the Signature field on-chain using ecrecover
-// to confirm Tollgate approved this exact transaction payload.
+// to confirm Verilock approved this exact transaction payload.
 //
 // SECURITY: Every field that is signed is also returned in the token so the
 // Guard — and any auditor — can independently verify the signature covers
@@ -77,7 +77,7 @@ type BuildRequest struct {
 }
 
 // BuildApprovalToken constructs an ApprovalToken, computes its EIP-712 hash,
-// signs it with Tollgate's ECDSA key, and returns the complete signed token.
+// signs it with Verilock's ECDSA key, and returns the complete signed token.
 //
 // Returns an error if:
 //   - The resulting token would expire within MinRemainingSeconds (TTL race condition)
@@ -185,13 +185,13 @@ func (s *Signer) eip712Hash(token *ApprovalToken) ([]byte, error) {
 	chainID := big.NewInt(token.ChainID)
 
 	// ── Domain Separator ──────────────────────────────────────────────────────
-	// verifyingContract = s.guardContractAddress (the deployed TollgateGuard).
+	// verifyingContract = s.guardContractAddress (the deployed VerilockGuard).
 	// This binding is what prevents a Notary signature from being replayed
 	// against a different Guard contract on any chain.
 	domainSeparator := gocrypto.Keccak256(
 		concat(
 			cachedDomainTypeHash,
-			gocrypto.Keccak256([]byte("Tollgate")), // name
+			gocrypto.Keccak256([]byte("Verilock")), // name
 			gocrypto.Keccak256([]byte("1")),        // version
 			padUint256Must(chainID),                // chainId
 			padAddress(s.guardContractAddress),     // verifyingContract — the real Guard address

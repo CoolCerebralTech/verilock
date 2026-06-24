@@ -2,8 +2,8 @@
 pragma solidity ^0.8.24;
 
 /**
- * @title TollgateTypes
- * @notice EIP-712 type definitions and cryptographic primitives for Tollgate
+ * @title VerilockTypes
+ * @notice EIP-712 type definitions and cryptographic primitives for Verilock
  *         Approval Token verification.
  *
  * @dev CRITICAL CORRECTNESS REQUIREMENT:
@@ -18,7 +18,7 @@ pragma solidity ^0.8.24;
  *
  *      DEPLOYMENT NOTE:
  *      The domain separator includes address(this) as verifyingContract.
- *      After deploying TollgateGuard, you MUST update .env:
+ *      After deploying VerilockGuard, you MUST update .env:
  *        GUARD_CONTRACT_ADDRESS=<deployed address>
  *      The Go Notary uses this value in its domain separator. If they differ,
  *      every signature the Notary produces will fail on-chain verification.
@@ -28,7 +28,7 @@ pragma solidity ^0.8.24;
  *      signer.go already adjusts to 27/28 before returning.
  *      _recoverSigner() normalises again as a safety net — do not remove.
  */
-abstract contract TollgateTypes {
+abstract contract VerilockTypes {
 
     // ── APPROVAL TOKEN TYPE HASH ───────────────────────────────────────────
     //
@@ -54,15 +54,15 @@ abstract contract TollgateTypes {
 
     // ── DOMAIN SEPARATOR BUILDER ──────────────────────────────────────────
     //
-    // Called in TollgateGuard constructor. Uses address(this) — must be
+    // Called in VerilockGuard constructor. Uses address(this) — must be
     // called post-deployment, not at compile time.
     //
-    // "Tollgate" and "1" MUST match the Go Notary's domain separator.
+    // "Verilock" and "1" MUST match the Go Notary's domain separator.
     // See: internal/signing/approval.go — initTypeHashes() and eip712Hash().
     function _buildDomainSeparator() internal view returns (bytes32) {
         return keccak256(abi.encode(
             DOMAIN_TYPEHASH,
-            keccak256(bytes("Tollgate")),  // name    — must match Go: "Tollgate"
+            keccak256(bytes("Verilock")),  // name    — must match Go: "Verilock"
             keccak256(bytes("1")),          // version — must match Go: "1"
             block.chainid,                  // chainId — set at deployment runtime
             address(this)                   // verifyingContract — this Guard's address

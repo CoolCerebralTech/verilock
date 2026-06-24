@@ -1,4 +1,4 @@
-# Tollgate Architecture
+# Verilock Architecture
 
 ## Three-Layer Security Model
 

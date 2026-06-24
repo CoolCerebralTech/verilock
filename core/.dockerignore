@@ -1,4 +1,4 @@
-# Tollgate Notary — Docker ignore list
+# Verilock Notary — Docker ignore list
 # ─────────────────────────────────────────────────────────────────────────────
 # Files listed here are EXCLUDED from the Docker build context.
 # Smaller context = faster builds. More importantly: secrets never reach
