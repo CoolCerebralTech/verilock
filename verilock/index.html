@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verilock — Blockchain Notary System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav>
+        <div class="container nav-content">
+            <div class="logo">
+                <div class="logo-icon">V</div>
+                <span>VERILOCK</span>
+            </div>
+            <div class="nav-links">
+                <a href="#architecture">Architecture</a>
+                <a href="#how-it-works">How it Works</a>
+                <a href="#deployment">Deployment</a>
+            </div>
+            <a class="nav-cta" href="https://github.com/CoolCerebralTech/verilock" target="_blank">GitHub</a>
+        </div>
+    </nav>
+
+    <div class="hero">
+        <div class="container">
+            <div class="hero-badge">
+                <span class="pulse"></span>
+                Live on Base Sepolia Testnet
+            </div>
+            <h1>Policy-Based Security for Smart Contract Wallets</h1>
+            <p>A three-layer notary system that enforces spend limits, destination checks, and approval workflows on every transaction leaving a Gnosis Safe.</p>
+            <div class="hero-cta">
+                <a class="btn btn-primary" href="#demo">See Live Demo</a>
+                <a class="btn btn-secondary" href="#architecture">How it Works</a>
+            </div>
+            <div class="status-bar">
+                <div class="status-item">
+                    <div class="label">Safe Wallet</div>
+                    <div class="value">
+                        <span class="status-dot"></span>Protected<br>
+                        <a href="https://app.safe.global/home?chain=basesep&safe=0xB7D6dd7f1a25fa5455b0cC8B6a8CD822fE247E11" target="_blank">0xB7D6...7E11</a>
+                    </div>
+                </div>
+                <div class="status-item">
+                    <div class="label">Guard Contract</div>
+                    <div class="value">
+                        <span class="status-dot"></span>Deployed<br>
+                        <a href="https://sepolia.basescan.org/address/0xB519fBAC8f59392200565BB4448aEcD498C1140c" target="_blank">0xB519...C140c</a>
+                    </div>
+                </div>
+                <div class="status-item">
+                    <div class="label">Network</div>
+                    <div class="value">
+                        <span class="status-dot"></span>Active<br>
+                        Base Sepolia (84532)
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <section class="section" id="architecture">
+        <div class="container">
+            <h2 class="section-title">Architecture</h2>
+            <p class="section-sub">Four layers — each with a specific responsibility</p>
+            <div class="arch-flow">
+                <div class="arch-card">
+                    <div class="arch-icon">🤖</div>
+                    <h3>Agent / User</h3>
+                    <p>Trading bot or human initiates a transaction</p>
+                    <span class="arch-tech">EOA / Bot</span>
+                </div>
+                <div class="arch-card">
+                    <div class="arch-icon">📋</div>
+                    <h3>Notary</h3>
+                    <p>Checks policy, risk scores, issues signed token</p>
+                    <span class="arch-tech">Go + YAML Policy</span>
+                </div>
+                <div class="arch-card">
+                    <div class="arch-icon">🔒</div>
+                    <h3>Gnosis Safe</h3>
+                    <p>Multi-sig wallet executes transactions</p>
+                    <span class="arch-tech">Smart Contract</span>
+                </div>
+                <div class="arch-card">
+                    <div class="arch-icon">🛡️</div>
+                    <h3>Guard</h3>
+                    <p>On-chain validation blocks unauthorized txs</p>
+                    <span class="arch-tech">Solidity</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="how-it-works">
+        <div class="container">
+            <h2 class="section-title">How It Works</h2>
+            <p class="section-sub">Every transaction goes through this flow</p>
+            <div class="how-it-works">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <h4>Request Approval</h4>
+                        <p>Agent sends transaction details to the Notary API: destination, amount, purpose. Notary checks against YAML policy.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <h4>Notary Issues Token</h4>
+                        <p>If policy allows, the Notary issues a signed EIP-712 approval token. The signature is cryptographically bound to this specific transaction.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <h4>Encode & Submit</h4>
+                        <p>The agent encodes the token into the transaction data using the SDK, then submits to the Safe for execution.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <h4>Guard Validates</h4>
+                        <p>Before the Safe executes, the Guard checks the token: valid signature? Not expired? Destination matches? Amount within limit? All checks pass → execute.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="demo" class="section">
+        <div class="container">
+            <h2 class="section-title">Live Demo</h2>
+            <p class="section-sub">See it in action on Base Sepolia</p>
+            <div class="demo-section">
+                <div class="demo-tabs">
+                    <button class="demo-tab active" onclick="showTab('blocked')">Blocked (No Token)</button>
+                    <button class="demo-tab" onclick="showTab('approved')">Approved (With Token)</button>
+                    <button class="demo-tab" onclick="showTab('code')">Guard Code</button>
+                </div>
+                <div id="tab-blocked" class="demo-content active">
+                    <div class="code-block">
+                        <span class="comment">// Try sending ETH without approval token</span><br>
+                        Safe.sendTransaction({<br>
+                        &nbsp;&nbsp;to: "0x090f...ED563",<br>
+                        &nbsp;&nbsp;value: "0.02 ETH",<br>
+                        &nbsp;&nbsp;data: "0x" <span class="comment">// No token → Guard rejects</span><br>
+                        })<br><br>
+                        <span class="comment">// Result: REVERTED by Guard</span><br>
+                        <span class="comment">// Safe UI: "Simulation Error: TokenMissing()"</span>
+                    </div>
+                </div>
+                <div id="tab-approved" class="demo-content">
+                    <div class="code-block">
+                        <span class="comment">// 1. Get approval from Notary</span><br>
+                        const token = await notary.approve({<br>
+                        &nbsp;&nbsp;agent: "trading-bot-01",<br>
+                        &nbsp;&nbsp;destination: "0x090f...ED563",<br>
+                        &nbsp;&nbsp;amount_usd: 20,<br>
+                        &nbsp;&nbsp;purpose: "yield_deposit"<br>
+                        });<br><br>
+                        <span class="comment">// 2. Encode and submit</span><br>
+                        const data = VerilockSDK.encode(calldata, token);<br>
+                        await Safe.sendTransaction({ to, value, data });<br><br>
+                        <span class="comment">// Result: SUCCESS</span>
+                    </div>
+                </div>
+                <div id="tab-code" class="demo-content">
+                    <div class="code-block">
+                        <span class="keyword">function</span> checkTransaction(..., <span class="keyword">bytes</span> data) <span class="keyword">external</span> {<br>
+                        &nbsp;&nbsp;<span class="comment">// Only Safe can call</span><br>
+                        &nbsp;&nbsp;require(msg.sender == safeAddress);<br><br>
+                        &nbsp;&nbsp;<span class="comment">// Extract and validate token</span><br>
+                        &nbsp;&nbsp;ApprovalToken <span class="keyword">memory</span> token = _extractToken(data);<br>
+                        &nbsp;&nbsp;require(_verifySignature(token), <span class="string">"Invalid signature"</span>);<br>
+                        &nbsp;&nbsp;require(!_isExpired(token), <span class="string">"Token expired"</span>);<br><br>
+                        &nbsp;&nbsp;<span class="comment">// All checks pass → allow</span><br>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="deployment" class="section">
+        <div class="container">
+            <h2 class="section-title">Base Sepolia Deployment</h2>
+            <p class="section-sub">Fully functional testnet deployment</p>
+            <div class="deployment-grid">
+                <div class="deploy-card">
+                    <h4>Safe Wallet</h4>
+                    <div class="address"><a href="https://app.safe.global/home?chain=basesep&safe=0xB7D6dd7f1a25fa5455b0cC8B6a8CD822fE247E11" target="_blank">0xB7D6...7E11</a></div>
+                    <span class="status-badge">Protected</span>
+                </div>
+                <div class="deploy-card">
+                    <h4>Guard Contract</h4>
+                    <div class="address"><a href="https://sepolia.basescan.org/address/0xB519fBAC8f59392200565BB4448aEcD498C1140c" target="_blank">0xB519...C140c</a></div>
+                    <span class="status-badge">Deployed</span>
+                </div>
+                <div class="deploy-card">
+                    <h4>Notary Server</h4>
+                    <div class="address">Port 8080, Chain 84532</div>
+                    <span class="status-badge">Running</span>
+                </div>
+                <div class="deploy-card">
+                    <h4>Network</h4>
+                    <div class="address">Base Sepolia (Chain ID: 84532)</div>
+                    <span class="status-badge">Testnet</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <h2 class="section-title">Key Features</h2>
+            <p class="section-sub">What makes Verilock secure</p>
+            <div class="features">
+                <div class="feature">
+                    <div class="feature-icon">🛡️</div>
+                    <h4>Immutable Guard</h4>
+                    <p>Deployed on-chain, the Guard enforces rules at the blockchain level. No one can bypass it.</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">📋</div>
+                    <h4>Hot-Reloadable Policy</h4>
+                    <p>YAML policy updates in real-time without redeploying the smart contract.</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🔐</div>
+                    <h4>EIP-712 Signatures</h4>
+                    <p>Cryptographic proof that the Notary approved this specific transaction.</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🔥</div>
+                    <h4>Escape Hatch</h4>
+                    <p>Safe owners can always remove the Guard via <code>setGuard(address(0))</code>. No lock-in.</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">📊</div>
+                    <h4>Three-Tier Approval</h4>
+                    <p>Auto-Tier 1, Notify + Veto Tier 2, or Human-in-the-loop Tier 3 based on amount and history.</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🎭</div>
+                    <h4>Replay Protection</h4>
+                    <p>Each token has a unique nonce consumed after use. Never reusable.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>Verilock — Final Year Project</p>
+            <p><a href="https://github.com/CoolCerebralTech/verilock" target="_blank">GitHub</a></p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
