@@ -1,6 +1,6 @@
-# Contributing to Tollgate
+# Contributing to Verilock
 
-Thank you for your interest in contributing. Tollgate is financial infrastructure for AI agents — correctness and security are the only priorities. We would rather have one fully verified feature than ten half-tested ones.
+Thank you for your interest in contributing. Verilock is financial infrastructure for AI agents — correctness and security are the only priorities. We would rather have one fully verified feature than ten half-tested ones.
 
 ---
 
@@ -36,7 +36,7 @@ Each component has its own language, toolchain, and test suite. Changes to one c
 cd core
 go version          # requires Go 1.21+
 cp .env.example .env
-# Fill in TOLLGATE_SIGNING_KEY_HEX and AGENT_TOKEN_SECRET
+# Fill in VERILOCK_SIGNING_KEY_HEX and AGENT_TOKEN_SECRET
 go run ./cmd/server/main.go
 ```
 
@@ -80,7 +80,7 @@ Pull requests should do one thing. A PR that adds a feature, refactors a module,
 ### Tests are not optional
 
 - Go: add tests to the relevant `_test.go` file. Run `go test ./...` — must pass.
-- Solidity: add tests to `test/TollgateGuard.t.sol`. Run `forge test -vvvv` — must pass.
+- Solidity: add tests to `test/VerilockGuard.t.sol`. Run `forge test -vvvv` — must pass.
 - TypeScript: add tests to `test/`. Run `npm test` — must pass.
 
 A PR without tests for new behaviour will be returned for tests before review.
@@ -89,7 +89,7 @@ A PR without tests for new behaviour will be returned for tests before review.
 
 The EIP-712 type hash and domain separator are shared between Phase 1 (Go) and Phase 2 (Solidity). Changing the type string, field order, or field names breaks on-chain verification for every deployed Guard. Any change to the EIP-712 definition requires:
 
-1. Simultaneous update to both `core/internal/signing/approval.go` and `contracts/src/TollgateTypes.sol`
+1. Simultaneous update to both `core/internal/signing/approval.go` and `contracts/src/VerilockTypes.sol`
 2. A new Guard deployment
 3. A migration guide in the PR description
 
@@ -131,4 +131,4 @@ We will respond within 48 hours and coordinate a fix before any public disclosur
 
 ## License
 
-By contributing to Tollgate, you agree that your contributions will be licensed under the MIT License.
+By contributing to Verilock, you agree that your contributions will be licensed under the MIT License.

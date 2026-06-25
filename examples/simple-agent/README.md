@@ -1,10 +1,10 @@
 # simple-agent
 
-The minimum viable Tollgate integration — 30 lines of TypeScript.
+The minimum viable Verilock integration — 30 lines of TypeScript.
 
 ## What it does
 
-1. Creates a `TollgateSigner` connected to your local Notary
+1. Creates a `VerilockSigner` connected to your local Notary
 2. Calls `simulate()` with a $10 transaction
 3. Prints the Notary's decision — approved, pending, or denied
 
@@ -26,8 +26,8 @@ npx tsx index.ts
 ## Expected output
 
 ```
-✓ Connected to Tollgate Notary
-✓ Transaction approved by Tollgate
+✓ Connected to Verilock Notary
+✓ Transaction approved by Verilock
   Token ID  : 9692d4ac-...
   Tier      : 3
   Expires   : 2026-06-11T...

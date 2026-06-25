@@ -1,6 +1,6 @@
 /**
  * @file api.ts
- * TollgateClient — all HTTP communication with the Notary.
+ * VerilockClient — all HTTP communication with the Notary.
  *
  * SECURITY CONTRACT:
  *   - agentToken is NEVER logged, never included in error messages,
@@ -17,12 +17,12 @@ import {
   ActionRequest,
 } from './types.js';
 import {
-  TollgateNetworkError,
-  TollgateTimeoutError,
-  TollgateNotaryUnreachableError,
-  TollgateRequestError,
-  TollgateValidationError,
-  TollgateHumanApprovalTimeoutError,
+  VerilockNetworkError,
+  VerilockTimeoutError,
+  VerilockNotaryUnreachableError,
+  VerilockRequestError,
+  VerilockValidationError,
+  VerilockHumanApprovalTimeoutError,
 } from './errors.js';
 
 // ── BACKOFF ───────────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ function sleep(ms: number): Promise<void> {
 
 // ── CLIENT ────────────────────────────────────────────────────────────────────
 
-export class TollgateClient {
+export class VerilockClient {
   constructor(
     private readonly baseUrl: string,
     private readonly agentToken: string,
@@ -78,13 +78,13 @@ export class TollgateClient {
 
         // ── 4xx: never retry — these are final answers ──────────────────────
         if (response.status === 401 || response.status === 403) {
-          throw new TollgateNetworkError(
+          throw new VerilockNetworkError(
             null,
             `Notary rejected agent token (HTTP ${response.status}) — check agentToken config`,
           );
         }
         if (response.status === 429) {
-          throw new TollgateNetworkError(null, 'Rate limited by Notary — slow down requests');
+          throw new VerilockNetworkError(null, 'Rate limited by Notary — slow down requests');
         }
         if (response.status === 400) {
           // Malformed request body — client bug, not a network or policy issue.
@@ -93,10 +93,10 @@ export class TollgateClient {
             const body = await response.json() as { error?: string };
             if (body.error) detail = body.error;
           } catch { /* ignore parse errors */ }
-          throw new TollgateRequestError(400, detail);
+          throw new VerilockRequestError(400, detail);
         }
         if (response.status >= 400 && response.status < 500) {
-          throw new TollgateNetworkError(null, `Notary returned HTTP ${response.status}`);
+          throw new VerilockNetworkError(null, `Notary returned HTTP ${response.status}`);
         }
 
         const json: unknown = await response.json();
@@ -104,10 +104,10 @@ export class TollgateClient {
 
       } catch (err) {
         // These errors must not be retried.
-        if (err instanceof TollgateNetworkError)  throw err;
-        if (err instanceof TollgateRequestError)  throw err;
-        if (err instanceof TollgateValidationError) throw err;
-        if (err instanceof TollgateTimeoutError)  throw err;
+        if (err instanceof VerilockNetworkError)  throw err;
+        if (err instanceof VerilockRequestError)  throw err;
+        if (err instanceof VerilockValidationError) throw err;
+        if (err instanceof VerilockTimeoutError)  throw err;
 
         // Network-level failure — eligible for retry.
         lastError = err;
@@ -115,7 +115,7 @@ export class TollgateClient {
       }
     }
 
-    throw new TollgateNetworkError(
+    throw new VerilockNetworkError(
       lastError,
       `Notary unreachable after ${this.maxRetries + 1} attempts`,
     );
@@ -167,7 +167,7 @@ export class TollgateClient {
 
     // Extract decisionId from the poll URL for the error message.
     const decisionId = pollUrl.split('/').pop() ?? pollUrl;
-    throw new TollgateHumanApprovalTimeoutError(decisionId, timeoutMs);
+    throw new VerilockHumanApprovalTimeoutError(decisionId, timeoutMs);
   }
 
   // ── healthCheck ──────────────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ export class TollgateClient {
    * GET /v1/health
    *
    * Verifies the Notary is reachable and healthy.
-   * Called by TollgateSigner.create() before returning the instance.
+   * Called by VerilockSigner.create() before returning the instance.
    *
    * Distinguishes two failure modes:
    *   - Connection refused / DNS failure → Notary is not running
@@ -187,13 +187,13 @@ export class TollgateClient {
       const response = await this._get('/v1/health');
       if (!response.ok) {
         // Notary is reachable but reports degraded status.
-        throw new TollgateNotaryUnreachableError(this.baseUrl, response.status);
+        throw new VerilockNotaryUnreachableError(this.baseUrl, response.status);
       }
       return true;
     } catch (err) {
-      if (err instanceof TollgateNotaryUnreachableError) throw err;
+      if (err instanceof VerilockNotaryUnreachableError) throw err;
       // Connection-level failure — Notary not running.
-      throw new TollgateNotaryUnreachableError(this.baseUrl);
+      throw new VerilockNotaryUnreachableError(this.baseUrl);
     }
   }
 
@@ -216,7 +216,7 @@ export class TollgateClient {
       });
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        throw new TollgateTimeoutError(this.timeoutMs);
+        throw new VerilockTimeoutError(this.timeoutMs);
       }
       throw err;
     } finally {
@@ -240,7 +240,7 @@ export class TollgateClient {
       });
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        throw new TollgateTimeoutError(this.timeoutMs);
+        throw new VerilockTimeoutError(this.timeoutMs);
       }
       throw err;
     } finally {
@@ -251,7 +251,7 @@ export class TollgateClient {
   private _validate(json: unknown): NotaryResponse {
     const result = NotaryResponseSchema.safeParse(json);
     if (!result.success) {
-      throw new TollgateValidationError(result.error);
+      throw new VerilockValidationError(result.error);
     }
     return result.data;
   }

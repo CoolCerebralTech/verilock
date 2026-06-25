@@ -1,6 +1,6 @@
 # Architecture
 
-Tollgate is three components that work together. Each has a clearly defined boundary of responsibility and communicates with the others through well-defined interfaces. No component can be bypassed by compromising another.
+Verilock is three components that work together. Each has a clearly defined boundary of responsibility and communicates with the others through well-defined interfaces. No component can be bypassed by compromising another.
 
 ---
 
@@ -61,7 +61,7 @@ core/
 
 The Guard is a Gnosis Safe module deployed once during onboarding. It attaches to the customer's Safe and enforces one hardcoded law:
 
-> No transaction may leave this vault unless it carries a valid Tollgate signature.
+> No transaction may leave this vault unless it carries a valid Verilock signature.
 
 This is what makes bypass physically impossible. The enforcement lives in the blockchain — not in the server. Even if the Notary server is destroyed, the Guard keeps running. Even if the AI agent goes rogue and calls the vault directly, the blockchain rejects the transaction.
 
@@ -84,13 +84,13 @@ This is what makes bypass physically impossible. The enforcement lives in the bl
 ```
 contracts/
 ├── src/
-│   ├── TollgateGuard.sol     ← Main Guard contract
-│   ├── TollgateTypes.sol     ← EIP-712 hashing (must match Phase 1)
+│   ├── VerilockGuard.sol     ← Main Guard contract
+│   ├── VerilockTypes.sol     ← EIP-712 hashing (must match Phase 1)
 │   └── interfaces/
 │       ├── IGuard.sol        ← Gnosis Safe Guard interface
 │       └── ISafe.sol         ← Gnosis Safe interface
 └── test/
-    └── TollgateGuard.t.sol   ← 22 tests, all must pass
+    └── VerilockGuard.t.sol   ← 22 tests, all must pass
 ```
 
 ---
@@ -99,24 +99,24 @@ contracts/
 
 **Lives:** In the developer's codebase  
 **Language:** TypeScript  
-**Package:** `@tollgate/agent-sdk`  
+**Package:** `@verilock/agent-sdk`  
 
 The SDK hides all the complexity. The developer installs one package and calls one method. The Notary communication, EIP-712 encoding, token injection, and Safe submission all happen invisibly.
 
 ```typescript
-// Without Tollgate: agent holds the key directly — dangerous
+// Without Verilock: agent holds the key directly — dangerous
 const tx = await wallet.sendTransaction({ to, value });
 
-// With Tollgate: policy enforced, token verified, audit logged
-const tx = await tollgate.sendTransaction({ to, value, amountUsd, purpose });
+// With Verilock: policy enforced, token verified, audit logged
+const tx = await verilock.sendTransaction({ to, value, amountUsd, purpose });
 ```
 
 **Key files:**
 ```
 sdk/src/
-├── index.ts      ← TollgateSigner — what developers import
-├── api.ts        ← TollgateClient — HTTP calls to Phase 1
-├── encoder.ts    ← injectTollgateToken — calldata encoding
+├── index.ts      ← VerilockSigner — what developers import
+├── api.ts        ← VerilockClient — HTTP calls to Phase 1
+├── encoder.ts    ← injectVerilockToken — calldata encoding
 ├── types.ts      ← Zod schemas, ABI definition, constants
 └── errors.ts     ← Typed error hierarchy
 ```
@@ -132,7 +132,7 @@ The Approval Token is the artifact that connects Phase 1 and Phase 2. It is an E
 For verification to work, both components must compute identical EIP-712 hashes. This requires:
 
 1. **Identical type string** — the field names, types, and order in `ApprovalToken(bytes32 tokenId,string agentId,...)` must be byte-for-byte identical in Go and Solidity
-2. **Identical domain separator** — `name="Tollgate"`, `version="1"`, `chainId`, `verifyingContract` must match
+2. **Identical domain separator** — `name="Verilock"`, `version="1"`, `chainId`, `verifyingContract` must match
 3. **V normalization** — Go's `crypto.Sign()` returns V as 0 or 1. Ethereum's `ecrecover` expects 27 or 28. Both Phase 1 and Phase 2 handle this explicitly.
 
 ```
@@ -154,7 +154,7 @@ The SDK encodes the token into the Safe transaction's `data` field using a 4-byt
 data field = [ original calldata ] + [ 0x544F4C47 ] + [ abi.encode(ApprovalTokenData) ]
 ```
 
-The Guard scans the `data` field for the prefix `0x544F4C47` (bytes4 of `keccak256("tollgate.approval.v1")`), slices everything after it, and ABI-decodes it as `ApprovalTokenData`.
+The Guard scans the `data` field for the prefix `0x544F4C47` (bytes4 of `keccak256("verilock.approval.v1")`), slices everything after it, and ABI-decodes it as `ApprovalTokenData`.
 
 ---
 
@@ -162,10 +162,10 @@ The Guard scans the `data` field for the prefix `0x544F4C47` (bytes4 of `keccak2
 
 ### The honeypot problem — solved
 
-Traditional key-holding proxies hold customer private keys. A single server breach exposes every customer's funds simultaneously. Tollgate's architecture makes that outcome impossible:
+Traditional key-holding proxies hold customer private keys. A single server breach exposes every customer's funds simultaneously. Verilock's architecture makes that outcome impossible:
 
-- Customer private keys never enter Tollgate's system
-- Tollgate's signing key is financially inert — it cannot authorize a transaction to any destination without the Guard
+- Customer private keys never enter Verilock's system
+- Verilock's signing key is financially inert — it cannot authorize a transaction to any destination without the Guard
 - A breach of the Notary yields policy logic and audit logs — not funds
 
 ### Fail closed
@@ -195,7 +195,7 @@ These definitions are shared between Phase 1 and Phase 2. Changing them requires
 
 ```
 EIP712Domain {
-  name:              "Tollgate"
+  name:              "Verilock"
   version:           "1"
   chainId:           uint256  (84532 for Base Sepolia, 8453 for Base Mainnet)
   verifyingContract: address  (deployed Guard address)

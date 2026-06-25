@@ -1,6 +1,6 @@
 /**
  * @file test-live.ts
- * Live integration test against a running Tollgate Notary.
+ * Live integration test against a running Verilock Notary.
  *
  * SECURITY: Only agentToken is needed for simulate() tests.
  *           ownerPrivateKey is only needed for actual on-chain submission.
@@ -15,7 +15,7 @@
  *   - Paste your agentToken below (from the Notary startup log)
  */
 
-import { TollgateSigner } from './src/index.js';
+import { VerilockSigner } from './src/index.js';
 import type { NotaryResponse } from './src/types.js';
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ async function main() {
 
   console.log('');
   console.log('─────────────────────────────────────────');
-  console.log('  Tollgate SDK — Live Integration Test');
+  console.log('  Verilock SDK — Live Integration Test');
   console.log('─────────────────────────────────────────');
   console.log(`  Notary  : ${NOTARY_URL}`);
   console.log(`  Safe    : ${SAFE_ADDRESS}`);
@@ -90,38 +90,38 @@ async function main() {
 
   // ── Connect ───────────────────────────────────────────────────────────────
   console.log('1. Connecting to Notary...');
-  const tollgate = await TollgateSigner.create({
+  const verilock = await VerilockSigner.create({
     notaryUrl:       NOTARY_URL,
     agentToken:      AGENT_TOKEN,
     agentId:         AGENT_ID,
     safeAddress:     SAFE_ADDRESS,
     ownerPrivateKey: RUN_ONCHAIN ? OWNER_PRIVATE_KEY : '0x0000000000000000000000000000000000000000000000000000000000000001' as `0x${string}`,
   });
-  console.log(`   ✓ connected — chain ${tollgate.getChainId()}`);
+  console.log(`   ✓ connected — chain ${verilock.getChainId()}`);
 
   // ── Tier 1: $10, below auto_approve_below_usd ($50) ──────────────────────
   console.log('\n2. Simulate $10 — Tier 1 (auto-approve)...');
-  const r1 = await tollgate.simulate({ to: DESTINATION, value: 10_000_000n, amountUsd: 10, purpose: 'defi_yield_optimization' });
+  const r1 = await verilock.simulate({ to: DESTINATION, value: 10_000_000n, amountUsd: 10, purpose: 'defi_yield_optimization' });
   printResult(r1);
 
   // ── Tier 2: $100, between $50 and $200 ───────────────────────────────────
   console.log('\n3. Simulate $100 — Tier 2 (notify + veto)...');
-  const r2 = await tollgate.simulate({ to: DESTINATION, value: 100_000_000n, amountUsd: 100, purpose: 'defi_yield_optimization' });
+  const r2 = await verilock.simulate({ to: DESTINATION, value: 100_000_000n, amountUsd: 100, purpose: 'defi_yield_optimization' });
   printResult(r2);
 
   // ── Tier 3: $300, above require_human_above_usd ($200) ───────────────────
   console.log('\n4. Simulate $300 — Tier 3 (human approval)...');
-  const r3 = await tollgate.simulate({ to: DESTINATION, value: 300_000_000n, amountUsd: 300, purpose: 'defi_yield_optimization' });
+  const r3 = await verilock.simulate({ to: DESTINATION, value: 300_000_000n, amountUsd: 300, purpose: 'defi_yield_optimization' });
   printResult(r3);
 
   // ── Denied: wrong purpose ─────────────────────────────────────────────────
   console.log('\n5. Simulate wrong purpose — denied...');
-  const r4 = await tollgate.simulate({ to: DESTINATION, value: 10_000_000n, amountUsd: 10, purpose: 'not_in_policy' });
+  const r4 = await verilock.simulate({ to: DESTINATION, value: 10_000_000n, amountUsd: 10, purpose: 'not_in_policy' });
   printResult(r4);
 
   // ── Denied: above max_per_transaction ($500) ──────────────────────────────
   console.log('\n6. Simulate $600 — denied (exceeds tx limit)...');
-  const r5 = await tollgate.simulate({ to: DESTINATION, value: 600_000_000n, amountUsd: 600, purpose: 'defi_yield_optimization' });
+  const r5 = await verilock.simulate({ to: DESTINATION, value: 600_000_000n, amountUsd: 600, purpose: 'defi_yield_optimization' });
   printResult(r5);
 
   // ── Assertions ────────────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ async function main() {
   if (RUN_ONCHAIN) {
     console.log('\n7. Submitting $10 on-chain via Safe...');
     console.log('   (Safe must hold ETH and Guard must be attached)');
-    const txHash = await tollgate.sendTransaction({
+    const txHash = await verilock.sendTransaction({
       to: DESTINATION, value: 10_000_000n, amountUsd: 10, purpose: 'defi_yield_optimization',
     });
     console.log(`   ✓ txHash: ${txHash}`);

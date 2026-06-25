@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// schema defines all tables and indexes for the Tollgate audit database.
+// schema defines all tables and indexes for the Verilock audit database.
 // Every statement uses CREATE IF NOT EXISTS — safe to run on every startup.
 //
 // TIMESTAMP CONVENTION:

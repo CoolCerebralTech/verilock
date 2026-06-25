@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"tollgate/internal/config"
+	"verilock/internal/config"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"

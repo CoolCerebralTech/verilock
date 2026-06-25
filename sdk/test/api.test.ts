@@ -1,18 +1,18 @@
 /**
  * @file test/api.test.ts
- * Unit tests for TollgateClient using msw to mock HTTP.
+ * Unit tests for VerilockClient using msw to mock HTTP.
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { TollgateClient } from '../src/api.js';
+import { VerilockClient } from '../src/api.js';
 import {
-  TollgateNetworkError,
-  TollgateRequestError,
-  TollgateValidationError,
-  TollgateNotaryUnreachableError,
-  TollgateHumanApprovalTimeoutError,
+  VerilockNetworkError,
+  VerilockRequestError,
+  VerilockValidationError,
+  VerilockNotaryUnreachableError,
+  VerilockHumanApprovalTimeoutError,
 } from '../src/errors.js';
 import type { ActionRequest } from '../src/types.js';
 
@@ -97,7 +97,7 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 function makeClient(overrides?: Partial<{ timeoutMs: number; maxRetries: number }>) {
-  return new TollgateClient(
+  return new VerilockClient(
     NOTARY_URL,
     AGENT_TOKEN,
     overrides?.timeoutMs  ?? 5_000,
@@ -107,7 +107,7 @@ function makeClient(overrides?: Partial<{ timeoutMs: number; maxRetries: number 
 
 // ── requestApproval — happy paths ─────────────────────────────────────────────
 
-describe('TollgateClient.requestApproval — approved responses', () => {
+describe('VerilockClient.requestApproval — approved responses', () => {
 
   it('Tier 1: returns approved response with token', async () => {
     server.use(
@@ -171,19 +171,19 @@ describe('TollgateClient.requestApproval — approved responses', () => {
 
 // ── requestApproval — error handling ─────────────────────────────────────────
 
-describe('TollgateClient.requestApproval — error handling', () => {
+describe('VerilockClient.requestApproval — error handling', () => {
 
-  it('throws TollgateValidationError on malformed response shape', async () => {
+  it('throws VerilockValidationError on malformed response shape', async () => {
     server.use(
       http.post(`${NOTARY_URL}/v1/action-check`, () =>
         HttpResponse.json({ broken: true }),
       ),
     );
     await expect(makeClient().requestApproval(baseRequest))
-      .rejects.toBeInstanceOf(TollgateValidationError);
+      .rejects.toBeInstanceOf(VerilockValidationError);
   });
 
-  it('throws TollgateValidationError when approval_token is missing tier', async () => {
+  it('throws VerilockValidationError when approval_token is missing tier', async () => {
     const tokenWithoutTier = { ...validToken };
     // @ts-expect-error intentionally testing missing field
     delete tokenWithoutTier.tier;
@@ -193,10 +193,10 @@ describe('TollgateClient.requestApproval — error handling', () => {
       ),
     );
     await expect(makeClient().requestApproval(baseRequest))
-      .rejects.toBeInstanceOf(TollgateValidationError);
+      .rejects.toBeInstanceOf(VerilockValidationError);
   });
 
-  it('throws TollgateNetworkError on 401 — does NOT retry', async () => {
+  it('throws VerilockNetworkError on 401 — does NOT retry', async () => {
     let callCount = 0;
     server.use(
       http.post(`${NOTARY_URL}/v1/action-check`, () => {
@@ -205,31 +205,31 @@ describe('TollgateClient.requestApproval — error handling', () => {
       }),
     );
     await expect(makeClient({ maxRetries: 3 }).requestApproval(baseRequest))
-      .rejects.toBeInstanceOf(TollgateNetworkError);
+      .rejects.toBeInstanceOf(VerilockNetworkError);
     expect(callCount).toBe(1); // no retries on 401
   });
 
-  it('throws TollgateNetworkError on 429 rate limit', async () => {
+  it('throws VerilockNetworkError on 429 rate limit', async () => {
     server.use(
       http.post(`${NOTARY_URL}/v1/action-check`, () =>
         HttpResponse.json({ error: 'rate limited' }, { status: 429 }),
       ),
     );
     await expect(makeClient().requestApproval(baseRequest))
-      .rejects.toBeInstanceOf(TollgateNetworkError);
+      .rejects.toBeInstanceOf(VerilockNetworkError);
   });
 
-  it('throws TollgateRequestError on 400 malformed request', async () => {
+  it('throws VerilockRequestError on 400 malformed request', async () => {
     server.use(
       http.post(`${NOTARY_URL}/v1/action-check`, () =>
         HttpResponse.json({ error: 'invalid request body' }, { status: 400 }),
       ),
     );
     await expect(makeClient().requestApproval(baseRequest))
-      .rejects.toBeInstanceOf(TollgateRequestError);
+      .rejects.toBeInstanceOf(VerilockRequestError);
   });
 
-  it('TollgateRequestError carries the HTTP status code', async () => {
+  it('VerilockRequestError carries the HTTP status code', async () => {
     server.use(
       http.post(`${NOTARY_URL}/v1/action-check`, () =>
         HttpResponse.json({ error: 'invalid request body' }, { status: 400 }),
@@ -239,8 +239,8 @@ describe('TollgateClient.requestApproval — error handling', () => {
       await makeClient().requestApproval(baseRequest);
       expect.fail('should have thrown');
     } catch (err) {
-      expect(err).toBeInstanceOf(TollgateRequestError);
-      expect((err as TollgateRequestError).httpStatus).toBe(400);
+      expect(err).toBeInstanceOf(VerilockRequestError);
+      expect((err as VerilockRequestError).httpStatus).toBe(400);
     }
   });
 
@@ -290,7 +290,7 @@ describe('TollgateClient.requestApproval — error handling', () => {
 
 // ── pollDecision ──────────────────────────────────────────────────────────────
 
-describe('TollgateClient.pollDecision', () => {
+describe('VerilockClient.pollDecision', () => {
   const POLL_URL  = '/v1/decision/423e4567-e89b-12d3-a456-426614174003';
   const FULL_POLL = `${NOTARY_URL}${POLL_URL}`;
 
@@ -320,13 +320,13 @@ describe('TollgateClient.pollDecision', () => {
     expect(result.status).toBe('denied');
   });
 
-  it('throws TollgateHumanApprovalTimeoutError when always pending', async () => {
+  it('throws VerilockHumanApprovalTimeoutError when always pending', async () => {
     server.use(
       http.get(FULL_POLL, () => HttpResponse.json(pendingHumanResponse)),
     );
     const client = makeClient();
     await expect(client.pollDecision(POLL_URL, 10, 50))
-      .rejects.toBeInstanceOf(TollgateHumanApprovalTimeoutError);
+      .rejects.toBeInstanceOf(VerilockHumanApprovalTimeoutError);
   });
 
   it('handles absolute poll_url correctly', async () => {
@@ -353,7 +353,7 @@ describe('TollgateClient.pollDecision', () => {
 
 // ── healthCheck ───────────────────────────────────────────────────────────────
 
-describe('TollgateClient.healthCheck', () => {
+describe('VerilockClient.healthCheck', () => {
 
   it('returns true when Notary responds 200', async () => {
     server.use(
@@ -364,15 +364,15 @@ describe('TollgateClient.healthCheck', () => {
     await expect(makeClient().healthCheck()).resolves.toBe(true);
   });
 
-  it('throws TollgateNotaryUnreachableError when connection refused', async () => {
+  it('throws VerilockNotaryUnreachableError when connection refused', async () => {
     server.use(
       http.get(`${NOTARY_URL}/v1/health`, () => HttpResponse.error()),
     );
     await expect(makeClient().healthCheck())
-      .rejects.toBeInstanceOf(TollgateNotaryUnreachableError);
+      .rejects.toBeInstanceOf(VerilockNotaryUnreachableError);
   });
 
-  it('throws TollgateNotaryUnreachableError with httpStatus when server returns 500', async () => {
+  it('throws VerilockNotaryUnreachableError with httpStatus when server returns 500', async () => {
     server.use(
       http.get(`${NOTARY_URL}/v1/health`, () =>
         HttpResponse.json({ status: 'degraded' }, { status: 500 }),
@@ -382,8 +382,8 @@ describe('TollgateClient.healthCheck', () => {
       await makeClient().healthCheck();
       expect.fail('should have thrown');
     } catch (err) {
-      expect(err).toBeInstanceOf(TollgateNotaryUnreachableError);
-      expect((err as TollgateNotaryUnreachableError).httpStatus).toBe(500);
+      expect(err).toBeInstanceOf(VerilockNotaryUnreachableError);
+      expect((err as VerilockNotaryUnreachableError).httpStatus).toBe(500);
     }
   });
 

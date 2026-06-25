@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"tollgate/internal/baseline"
+	"verilock/internal/baseline"
 
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 )
 
-// DB is the Tollgate audit database.
+// DB is the Verilock audit database.
 // All public methods are safe for concurrent use.
 //
 // SECURITY CONTRACT:
@@ -143,7 +143,7 @@ func (a *DB) Ping() error {
 // consumed — which would allow replay attacks on that nonce.
 //
 // If this function returns an error, the caller MUST return a denial to the agent.
-// An unrecorded approval does not exist as far as Tollgate is concerned.
+// An unrecorded approval does not exist as far as Verilock is concerned.
 func (a *DB) WriteDecision(rec DecisionRecord, nonceExpiresAt time.Time) error {
 	if rec.ID == "" {
 		rec.ID = uuid.New().String()

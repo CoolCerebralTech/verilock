@@ -1,5 +1,5 @@
 /**
- * simple-agent — Tollgate in 20 lines
+ * simple-agent — Verilock in 20 lines
  *
  * The bare minimum to send a policy-protected transaction on Base.
  * This is the first thing a developer should run after setup.
@@ -13,7 +13,7 @@
  * Add this file to .gitignore before pasting any real token.
  */
 
-import { TollgateSigner } from '../../sdk/src/index.js';
+import { VerilockSigner } from '../../sdk/src/index.js';
 
 // ── Config — fill in AGENT_TOKEN, leave everything else ──────────────────────
 // ownerPrivateKey is only used for sendTransaction() — not needed for simulate().
@@ -36,12 +36,12 @@ async function main() {
     throw new Error('AGENT_TOKEN is empty — paste the v1.eyJ... token from Notary startup log');
   }
 
-  const tollgate = await TollgateSigner.create(CONFIG);
-  console.log('✓ Connected to Tollgate Notary');
+  const verilock = await VerilockSigner.create(CONFIG);
+  console.log('✓ Connected to Verilock Notary');
 
   // simulate() calls the Notary and returns the decision — without hitting the chain.
   // Use sendTransaction() to submit a real on-chain transaction.
-  const result = await tollgate.simulate({
+  const result = await verilock.simulate({
     to:        '0xDEF4560000000000000000000000000000000000',
     value:     10_000_000n,
     amountUsd: 10.00,
@@ -49,7 +49,7 @@ async function main() {
   });
 
   if (result.status === 'approved') {
-    console.log('✓ Transaction approved by Tollgate');
+    console.log('✓ Transaction approved by Verilock');
     console.log('  Token ID  :', result.approval_token.token_id);
     console.log('  Tier      :', result.approval_token.tier);
     console.log('  Expires   :', result.approval_token.expires_at);

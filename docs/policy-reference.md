@@ -1,6 +1,6 @@
 # Policy Reference
 
-The Tollgate policy file is a human-readable YAML document that defines exactly what each AI agent is and is not allowed to do. It is the legal contract between the agent and the humans who deployed it.
+The Verilock policy file is a human-readable YAML document that defines exactly what each AI agent is and is not allowed to do. It is the legal contract between the agent and the humans who deployed it.
 
 **Key properties:**
 - Written in plain YAML — CFOs and compliance officers can read and sign off on it

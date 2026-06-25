@@ -21,7 +21,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -trimpath \
     -ldflags="-s -w" \
-    -o /bin/tollgate-server \
+    -o /bin/verilock-server \
     ./cmd/server
 
 # ── Stage 2: Final image ──────────────────────────────────────────────────────
@@ -32,13 +32,13 @@ FROM alpine:3.19
 # ca-certificates — needed for HTTPS calls to Base RPC endpoints
 # tzdata          — needed for correct time zone handling in audit timestamps
 RUN apk add --no-cache ca-certificates tzdata && \
-    # Create a non-root user: tollgate (uid 1001)
+    # Create a non-root user: verilock (uid 1001)
     # Running as root inside a container is unnecessary and increases attack surface.
-    addgroup -g 1001 tollgate && \
-    adduser -u 1001 -G tollgate -D -s /sbin/nologin tollgate
+    addgroup -g 1001 verilock && \
+    adduser -u 1001 -G verilock -D -s /sbin/nologin verilock
 
 # Copy the compiled binary from the builder stage.
-COPY --from=builder /bin/tollgate-server /usr/local/bin/tollgate-server
+COPY --from=builder /bin/verilock-server /usr/local/bin/verilock-server
 
 # ── Runtime directory structure ───────────────────────────────────────────────
 # These directories are created here so Docker knows they exist.
@@ -51,10 +51,10 @@ COPY --from=builder /bin/tollgate-server /usr/local/bin/tollgate-server
 # SECURITY: Keys and policy files are NEVER baked into the image.
 #           They are always mounted at runtime via docker-compose volumes.
 RUN mkdir -p /data /policies /logs && \
-    chown -R tollgate:tollgate /data /policies /logs
+    chown -R verilock:verilock /data /policies /logs
 
 # Switch to non-root user for all subsequent operations including CMD.
-USER tollgate
+USER verilock
 
 # Expose the Notary HTTP port.
 # The actual port is configured via SERVER_PORT in .env — this is documentation.
@@ -72,4 +72,4 @@ HEALTHCHECK \
 
 # Default entrypoint — run the Notary server.
 # Config is loaded from environment variables (via .env mounted by docker-compose).
-ENTRYPOINT ["/usr/local/bin/tollgate-server"]
+ENTRYPOINT ["/usr/local/bin/verilock-server"]

@@ -1,6 +1,6 @@
 /**
  * @file index.ts
- * TollgateSigner — the only class a developer needs to import.
+ * VerilockSigner — the only class a developer needs to import.
  *
  * Design note on viem clients:
  *   viem 2.x Base/OP Stack chains include deposit transaction types that
@@ -31,10 +31,10 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { baseSepolia, base }   from 'viem/chains';
 
-import { TollgateClient }      from './api.js';
-import { injectTollgateToken } from './encoder.js';
+import { VerilockClient }      from './api.js';
+import { injectVerilockToken } from './encoder.js';
 import {
-  type TollgateConfig,
+  type VerilockConfig,
   type TxRequest,
   type ActionRequest,
   type NotaryResponse,
@@ -42,11 +42,11 @@ import {
   BASE_MAINNET_CHAIN_ID,
 } from './types.js';
 import {
-  TollgateConfigError,
-  TollgateTransactionDeniedError,
-  TollgateTokenExpiredError,
-  TollgateOnChainError,
-  TollgateNetworkError,
+  VerilockConfigError,
+  VerilockTransactionDeniedError,
+  VerilockTokenExpiredError,
+  VerilockOnChainError,
+  VerilockNetworkError,
 } from './errors.js';
 
 // ── GNOSIS SAFE ABI (minimal) ─────────────────────────────────────────────────
@@ -63,17 +63,17 @@ function selectChain(useMainnet: boolean | undefined) {
   return useMainnet ? base : baseSepolia;
 }
 
-// ── TOLLGATE SIGNER ───────────────────────────────────────────────────────────
+// ── VERILOCK SIGNER ───────────────────────────────────────────────────────────
 
-export class TollgateSigner {
-  private readonly config: TollgateConfig;
+export class VerilockSigner {
+  private readonly config: VerilockConfig;
   private readonly chainId: number;
-  private readonly notaryClient: TollgateClient;
+  private readonly notaryClient: VerilockClient;
 
-  private constructor(config: TollgateConfig) {
+  private constructor(config: VerilockConfig) {
     this.config       = config;
     this.chainId      = config.useMainnet ? BASE_MAINNET_CHAIN_ID : BASE_SEPOLIA_CHAIN_ID;
-    this.notaryClient = new TollgateClient(
+    this.notaryClient = new VerilockClient(
       config.notaryUrl,
       config.agentToken,
       config.notaryTimeoutMs ?? 10_000,
@@ -99,22 +99,22 @@ export class TollgateSigner {
   // ── FACTORY ──────────────────────────────────────────────────────────────────
 
   /**
-   * Creates a TollgateSigner after validating config and health-checking
+   * Creates a VerilockSigner after validating config and health-checking
    * the Notary. Always use this — the constructor is private.
    *
-   * @throws TollgateConfigError             if any required field is missing
-   * @throws TollgateNotaryUnreachableError  if the Notary is not reachable
+   * @throws VerilockConfigError             if any required field is missing
+   * @throws VerilockNotaryUnreachableError  if the Notary is not reachable
    */
-  static async create(config: TollgateConfig): Promise<TollgateSigner> {
-    if (!config.notaryUrl)       throw new TollgateConfigError('notaryUrl is required');
-    if (!config.agentToken)      throw new TollgateConfigError('agentToken is required');
-    if (!config.agentId)         throw new TollgateConfigError('agentId is required');
-    if (!config.safeAddress)     throw new TollgateConfigError('safeAddress is required');
-    if (!config.ownerPrivateKey) throw new TollgateConfigError('ownerPrivateKey is required');
+  static async create(config: VerilockConfig): Promise<VerilockSigner> {
+    if (!config.notaryUrl)       throw new VerilockConfigError('notaryUrl is required');
+    if (!config.agentToken)      throw new VerilockConfigError('agentToken is required');
+    if (!config.agentId)         throw new VerilockConfigError('agentId is required');
+    if (!config.safeAddress)     throw new VerilockConfigError('safeAddress is required');
+    if (!config.ownerPrivateKey) throw new VerilockConfigError('ownerPrivateKey is required');
     if (!config.notaryUrl.startsWith('http')) {
-      throw new TollgateConfigError('notaryUrl must start with http:// or https://');
+      throw new VerilockConfigError('notaryUrl must start with http:// or https://');
     }
-    const signer = new TollgateSigner(config);
+    const signer = new VerilockSigner(config);
     await signer.notaryClient.healthCheck();
     return signer;
   }
@@ -130,17 +130,17 @@ export class TollgateSigner {
    *   onApprovedWithNotification with the veto window duration.
    * Tier 3 — pending_human:             polls until approved or timeout.
    *
-   * @throws TollgateTransactionDeniedError    Notary denied the request
-   * @throws TollgateHumanApprovalTimeoutError Tier 3 timed out
-   * @throws TollgateTokenExpiredError         Token expired before submission
-   * @throws TollgateOnChainError              Safe transaction reverted
+   * @throws VerilockTransactionDeniedError    Notary denied the request
+   * @throws VerilockHumanApprovalTimeoutError Tier 3 timed out
+   * @throws VerilockTokenExpiredError         Token expired before submission
+   * @throws VerilockOnChainError              Safe transaction reverted
    */
   async sendTransaction(params: TxRequest): Promise<Hash> {
     // ── Step 1: Validate purpose ──────────────────────────────────────────────
     const purpose = params.purpose ?? this.config.defaultPurpose ?? '';
     if (!purpose) {
-      throw new TollgateConfigError(
-        'purpose is required — set it on TxRequest or TollgateConfig.defaultPurpose',
+      throw new VerilockConfigError(
+        'purpose is required — set it on TxRequest or VerilockConfig.defaultPurpose',
       );
     }
 
@@ -162,7 +162,7 @@ export class TollgateSigner {
 
     // ── Step 4: Handle denial ─────────────────────────────────────────────────
     if (response.status === 'denied') {
-      throw new TollgateTransactionDeniedError(response.code, response.message);
+      throw new VerilockTransactionDeniedError(response.code, response.message);
     }
 
     // ── Step 5: Tier 3 — poll for human approval ──────────────────────────────
@@ -182,7 +182,7 @@ export class TollgateSigner {
       );
 
       if (response.status === 'denied') {
-        throw new TollgateTransactionDeniedError(response.code, response.message);
+        throw new VerilockTransactionDeniedError(response.code, response.message);
       }
       if (response.status === 'approved' || response.status === 'approved_with_notification') {
         this.config.onHumanApprovalReceived?.(response.decision_id);
@@ -201,7 +201,7 @@ export class TollgateSigner {
 
     // ── Step 7: Guard — only approved statuses should reach here ─────────────
     if (response.status !== 'approved' && response.status !== 'approved_with_notification') {
-      throw new TollgateTransactionDeniedError(
+      throw new VerilockTransactionDeniedError(
         'UNKNOWN',
         `Unexpected Notary status: ${response.status}`,
       );
@@ -213,11 +213,11 @@ export class TollgateSigner {
     const bufferSec = this.config.tokenExpiryBufferSeconds ?? 10;
     const expiresIn = new Date(token.expires_at).getTime() / 1000 - Date.now() / 1000;
     if (expiresIn < bufferSec) {
-      throw new TollgateTokenExpiredError(token.token_id, token.expires_at);
+      throw new VerilockTokenExpiredError(token.token_id, token.expires_at);
     }
 
     // ── Step 9: Inject token into calldata ────────────────────────────────────
-    const modifiedData = injectTollgateToken(params.data, token);
+    const modifiedData = injectVerilockToken(params.data, token);
 
     // ── Step 10: Viem clients ─────────────────────────────────────────────────
     const publicClient = this._publicClient();
@@ -230,7 +230,7 @@ export class TollgateSigner {
         address: this.config.safeAddress,
       });
       if (safeBalance < params.value) {
-        throw new TollgateNetworkError(
+        throw new VerilockNetworkError(
           null,
           `Safe ${this.config.safeAddress} has insufficient balance: ` +
           `has ${formatEther(safeBalance)} ETH, needs ${formatEther(params.value)} ETH`,
@@ -282,7 +282,7 @@ export class TollgateSigner {
     // ── Step 16: Wait for receipt ─────────────────────────────────────────────
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
     if (receipt.status === 'reverted') {
-      throw new TollgateOnChainError(txHash, 'Transaction reverted — check Guard configuration');
+      throw new VerilockOnChainError(txHash, 'Transaction reverted — check Guard configuration');
     }
 
     return txHash;
@@ -320,7 +320,7 @@ export class TollgateSigner {
 // ── PUBLIC EXPORTS ────────────────────────────────────────────────────────────
 
 export type {
-  TollgateConfig,
+  VerilockConfig,
   TxRequest,
   ApprovalToken,
   NotaryResponse,

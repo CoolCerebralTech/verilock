@@ -9,12 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-	"tollgate/internal/config"
+	"verilock/internal/config"
 
 	"go.uber.org/zap"
 )
 
-// Server is the Tollgate HTTP gateway.
+// Server is the Verilock HTTP gateway.
 // It owns the HTTP server lifecycle — start, route, and graceful shutdown.
 type Server struct {
 	cfg      *config.Config
@@ -99,7 +99,7 @@ func (s *Server) Start() error {
 
 	serveErr := make(chan error, 1)
 	go func() {
-		s.log.Info("tollgate notary listening",
+		s.log.Info("verilock notary listening",
 			zap.String("address", listener.Addr().String()),
 			zap.String("environment", s.cfg.Environment),
 		)
@@ -144,7 +144,7 @@ func (s *Server) Start() error {
 		}
 	}
 
-	s.log.Info("tollgate notary shut down cleanly")
+	s.log.Info("verilock notary shut down cleanly")
 	return nil
 }
 

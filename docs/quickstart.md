@@ -1,4 +1,4 @@
-# Quickstart — Tollgate in 15 Minutes
+# Quickstart — Verilock in 15 Minutes
 
 This guide gets you from zero to a working protected transaction on Base Sepolia testnet.
 
@@ -13,8 +13,8 @@ This guide gets you from zero to a working protected transaction on Base Sepolia
 ## Step 1 — Clone the Repository
 
 ```bash
-git clone https://github.com/CoolCerebralTech/tollgate.git
-cd tollgate
+git clone https://github.com/CoolCerebralTech/verilock.git
+cd verilock
 ```
 
 ---
@@ -40,7 +40,7 @@ go run keygen.go
 Copy the output values into `.env`:
 
 ```env
-TOLLGATE_SIGNING_KEY_HEX=your_64_char_hex_key
+VERILOCK_SIGNING_KEY_HEX=your_64_char_hex_key
 AGENT_TOKEN_SECRET=your_64_char_hex_secret
 SERVER_PORT=8080
 POLICY_FILE_PATH=./policies/policy.yaml
@@ -61,7 +61,7 @@ go run ./cmd/server/main.go
 
 You will see:
 ```
-TOLLGATE NOTARY — CONFIG
+VERILOCK NOTARY — CONFIG
   Environment : development
   Port        : 8080
   ...
@@ -69,7 +69,7 @@ startup canaries passed
 DEV TOKEN (trading-bot-01) — use in Authorization header
 Bearer eyJhZ2...
 
-tollgate notary listening  {"address": "[::]:8080"}
+verilock notary listening  {"address": "[::]:8080"}
 ```
 
 **Copy the Bearer token** — you will need it in Step 4.
@@ -78,7 +78,7 @@ tollgate notary listening  {"address": "[::]:8080"}
 
 ## Step 3 — Deploy the Guard (Phase 2)
 
-The Guard is the on-chain enforcer. It attaches to a Gnosis Safe and verifies every transaction carries a valid Tollgate signature.
+The Guard is the on-chain enforcer. It attaches to a Gnosis Safe and verifies every transaction carries a valid Verilock signature.
 
 ```bash
 cd ../contracts
@@ -95,7 +95,7 @@ Copy Account 0's private key from the Anvil output. Then deploy:
 ```bash
 # In the contracts/ directory
 export DEPLOYER_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-export TOLLGATE_NOTARY_ADDRESS=0x174394D59b5700b48Bd48B5F06c7B96e8e43b6b5
+export VERILOCK_NOTARY_ADDRESS=0x174394D59b5700b48Bd48B5F06c7B96e8e43b6b5
 
 forge script script/Deploy.s.sol \
   --rpc-url http://127.0.0.1:8545 \
@@ -130,10 +130,10 @@ npm install
 Create `my-first-agent.ts`:
 
 ```typescript
-import { TollgateSigner } from '@tollgate/agent-sdk';
+import { VerilockSigner } from '@verilock/agent-sdk';
 
 async function main() {
-  const tollgate = await TollgateSigner.create({
+  const verilock = await VerilockSigner.create({
     notaryUrl:       'http://localhost:8080',
     agentToken:      'PASTE_YOUR_BEARER_TOKEN_HERE',
     agentId:         'trading-bot-01',
@@ -141,10 +141,10 @@ async function main() {
     ownerPrivateKey: '0xYourSafeOwnerPrivateKey',
   });
 
-  console.log('Tollgate ready. Sending transaction...');
+  console.log('Verilock ready. Sending transaction...');
 
   // This evaluates policy, gets approval, and submits to the Safe
-  const result = await tollgate.simulate({
+  const result = await verilock.simulate({
     to:        '0xdef4560000000000000000000000000000000000',
     value:     10000000n,
     amountUsd: 10.00,
@@ -168,7 +168,7 @@ npx tsx my-first-agent.ts
 
 Expected output:
 ```
-Tollgate ready. Sending transaction...
+Verilock ready. Sending transaction...
 Result: approved
 Token ID: uuid-here
 Signature: 0x...
@@ -186,7 +186,7 @@ Signature: 0x...
 
 If you change the `purpose` to `buy_nfts` — a purpose not in the policy — you get:
 ```
-TollgateTransactionDeniedError: [PURPOSE_MISMATCH] Purpose "buy_nfts" is not allowed
+VerilockTransactionDeniedError: [PURPOSE_MISMATCH] Purpose "buy_nfts" is not allowed
 ```
 
 That is the entire product in one line.

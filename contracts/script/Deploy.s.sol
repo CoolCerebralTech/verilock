@@ -2,14 +2,14 @@
 pragma solidity ^0.8.24;
 
 import {Script, console} from "forge-std/Script.sol";
-import {TollgateGuard}   from "../src/TollgateGuard.sol";
+import {VerilockGuard}   from "../src/VerilockGuard.sol";
 
 /**
  * @title  Deploy
- * @notice Deploys TollgateGuard to the target network.
+ * @notice Deploys VerilockGuard to the target network.
  *
  * Required environment variables:
- *   TOLLGATE_NOTARY_ADDRESS  — from: go run ./cmd/server  (printed on boot)
+ *   VERILOCK_NOTARY_ADDRESS  — from: go run ./cmd/server  (printed on boot)
  *   SAFE_ADDRESS             — your Gnosis Safe address on the target chain
  *   DEPLOYER_PRIVATE_KEY     — EOA that pays for deployment gas
  *
@@ -17,7 +17,7 @@ import {TollgateGuard}   from "../src/TollgateGuard.sol";
  *   EXPECTED_CHAIN_ID        — safety check; script aborts if chain doesn't match
  *
  * Usage — local Anvil (single-owner Safe or EOA as Safe for testing):
- *   export TOLLGATE_NOTARY_ADDRESS=0x...
+ *   export VERILOCK_NOTARY_ADDRESS=0x...
  *   export SAFE_ADDRESS=0x...
  *   forge script script/Deploy.s.sol \
  *     --rpc-url http://127.0.0.1:8545 \
@@ -41,8 +41,8 @@ contract Deploy is Script {
     function run() external {
         // ── Required inputs ───────────────────────────────────────────────────
 
-        address notaryAddress = vm.envAddress("TOLLGATE_NOTARY_ADDRESS");
-        require(notaryAddress != address(0), "Deploy: TOLLGATE_NOTARY_ADDRESS not set");
+        address notaryAddress = vm.envAddress("VERILOCK_NOTARY_ADDRESS");
+        require(notaryAddress != address(0), "Deploy: VERILOCK_NOTARY_ADDRESS not set");
 
         // SAFE_ADDRESS is required — no silent fallback to msg.sender.
         // On Anvil, deploy a mock Safe or use the Safe SDK to create one first.
@@ -75,7 +75,7 @@ contract Deploy is Script {
 
         // ── Pre-deploy summary ────────────────────────────────────────────────
 
-        console.log("=== TOLLGATE GUARD DEPLOYMENT ===");
+        console.log("=== VERILOCK GUARD DEPLOYMENT ===");
         console.log("Chain ID  :", block.chainid);
         console.log("Notary    :", notaryAddress);
         console.log("Safe      :", safeAddress);
@@ -85,7 +85,7 @@ contract Deploy is Script {
         // ── Deploy ────────────────────────────────────────────────────────────
 
         vm.startBroadcast();
-        TollgateGuard guard = new TollgateGuard(notaryAddress, safeAddress);
+        VerilockGuard guard = new VerilockGuard(notaryAddress, safeAddress);
         vm.stopBroadcast();
 
         // ── Post-deploy verification ──────────────────────────────────────────

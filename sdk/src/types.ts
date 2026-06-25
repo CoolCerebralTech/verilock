@@ -114,7 +114,7 @@ export interface ActionRequest {
 
 // ── CONFIG ──────────────────────────────────────────────────────────────────
 
-export interface TollgateConfig {
+export interface VerilockConfig {
   /** Notary URL — no trailing slash. e.g. http://localhost:8080 */
   notaryUrl: string;
 
@@ -125,7 +125,7 @@ export interface TollgateConfig {
   /** Registered agent ID in policy.yaml. e.g. "trading-bot-01" */
   agentId: string;
 
-  /** Gnosis Safe address on Base that has TollgateGuard attached. */
+  /** Gnosis Safe address on Base that has VerilockGuard attached. */
   safeAddress: `0x${string}`;
 
   /** Safe owner private key — signs Safe transactions.
@@ -171,7 +171,7 @@ export interface TollgateConfig {
 }
 
 // ── APPROVAL TOKEN ABI ──────────────────────────────────────────────────────
-// ABI definition for ApprovalTokenData struct in TollgateGuard.sol.
+// ABI definition for ApprovalTokenData struct in VerilockGuard.sol.
 // Field ORDER must exactly match the Solidity struct — used by viem's
 // encodeAbiParameters in encoder.ts.
 
@@ -193,9 +193,9 @@ export const BASE_MAINNET_CHAIN_ID = 8453;
 export const BASE_SEPOLIA_CHAIN_ID = 84532;
 
 /**
- * 4-byte prefix marking the Tollgate token in Safe tx data.
- * bytes4(keccak256("tollgate.approval.v1")) truncated to 4 bytes.
+ * 4-byte prefix marking the Verilock token in Safe tx data.
+ * bytes4(keccak256("verilock.approval.v1")) truncated to 4 bytes.
  * No 0x prefix — raw hex, concatenated directly by encoder.ts.
- * Must match TOKEN_PREFIX in TollgateGuard.sol.
+ * Must match TOKEN_PREFIX in VerilockGuard.sol.
  */
-export const TOLLGATE_PREFIX = '544F4C47' as const;
+export const VERILOCK_PREFIX = '544F4C47' as const;

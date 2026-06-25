@@ -1,6 +1,6 @@
 /**
  * @file encoder.ts
- * injectTollgateToken — encodes an ApprovalToken into Safe transaction data.
+ * injectVerilockToken — encodes an ApprovalToken into Safe transaction data.
  *
  * Output structure:
  *   [ original calldata ] + [ 544F4C47 ] + [ ABI-encoded ApprovalTokenData ]
@@ -24,7 +24,7 @@
  */
 
 import { encodeAbiParameters, keccak256, toBytes, toHex } from 'viem';
-import { ApprovalToken, APPROVAL_TOKEN_ABI, TOLLGATE_PREFIX } from './types.js';
+import { ApprovalToken, APPROVAL_TOKEN_ABI, VERILOCK_PREFIX } from './types.js';
 
 // ── BYTES32 HELPERS ──────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ export function policyHashToBytes32(policyHash: string): `0x${string}` {
  * Encodes an ApprovalToken into the Safe transaction data field.
  *
  * Field order in encodeAbiParameters MUST match the Solidity struct
- * ApprovalTokenData in TollgateGuard.sol:
+ * ApprovalTokenData in VerilockGuard.sol:
  *   bytes32 tokenId      ← keccak256(token_id string)
  *   string  agentId      ← raw string (ABI string encoding handles dynamic type)
  *   address destination  ← as-is
@@ -97,7 +97,7 @@ export function policyHashToBytes32(policyHash: string): `0x${string}` {
  * @param token         ApprovalToken from the Notary response.
  * @returns             Modified data field for Safe.execTransaction().
  */
-export function injectTollgateToken(
+export function injectVerilockToken(
   originalData: `0x${string}` | undefined,
   token: ApprovalToken,
 ): `0x${string}` {
@@ -135,26 +135,26 @@ export function injectTollgateToken(
   const originalHex = strip0x(base);
   const encodedHex  = strip0x(encoded);
 
-  return `0x${originalHex}${TOLLGATE_PREFIX}${encodedHex}`;
+  return `0x${originalHex}${VERILOCK_PREFIX}${encodedHex}`;
 }
 
 // ── INSPECTION HELPERS ────────────────────────────────────────────────────────
 
 /**
- * Returns true if data already contains a Tollgate token.
+ * Returns true if data already contains a Verilock token.
  * Guards against double-injection.
  */
-export function hasTollgateToken(data: `0x${string}`): boolean {
-  return strip0x(data).toLowerCase().includes(TOLLGATE_PREFIX.toLowerCase());
+export function hasVerilockToken(data: `0x${string}`): boolean {
+  return strip0x(data).toLowerCase().includes(VERILOCK_PREFIX.toLowerCase());
 }
 
 /**
- * Returns the byte offset of the Tollgate prefix in data, or -1 if absent.
+ * Returns the byte offset of the Verilock prefix in data, or -1 if absent.
  * Useful for debugging encoding issues.
  */
-export function findTollgatePrefixOffset(data: `0x${string}`): number {
+export function findVerilockPrefixOffset(data: `0x${string}`): number {
   const hex    = strip0x(data).toLowerCase();
-  const prefix = TOLLGATE_PREFIX.toLowerCase();
+  const prefix = VERILOCK_PREFIX.toLowerCase();
   const idx    = hex.indexOf(prefix);
   return idx === -1 ? -1 : idx / 2; // nibble index → byte index
 }

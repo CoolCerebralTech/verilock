@@ -1,4 +1,4 @@
-# Tollgate Notary — Policy Configuration
+# Verilock Notary — Policy Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 # This file defines every registered agent and the rules that govern them.
 # Changes take effect immediately (hot reload is active in development).
@@ -17,7 +17,7 @@
 
 version: "1.0.1"
 updated_at: "2026-06-07T00:00:00Z"
-updated_by: "founder@tollgate.dev"
+updated_by: "founder@verilock.dev"
 
 global_rules:
   # Must always be "deny" — fail-closed is mandatory.

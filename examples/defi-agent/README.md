@@ -1,6 +1,6 @@
 # defi-agent
 
-A complete DeFi trading agent demonstrating every Tollgate feature across all three tiers.
+A complete DeFi trading agent demonstrating every Verilock feature across all three tiers.
 
 ## What it demonstrates
 
@@ -29,8 +29,8 @@ npx tsx index.ts
 ## Expected output
 
 ```
-[13:10:01.000] Starting DeFi agent with Tollgate protection...
-[13:10:01.052] ✓ Connected to Tollgate Notary
+[13:10:01.000] Starting DeFi agent with Verilock protection...
+[13:10:01.052] ✓ Connected to Verilock Notary
 
 [13:10:01.053] → Small swap $10 — expect Tier 1 auto-approve
 [13:10:01.120]   ✓ APPROVED (Tier 1) | risk: 0.00 | auto: true

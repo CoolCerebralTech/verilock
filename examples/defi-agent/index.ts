@@ -1,5 +1,5 @@
 /**
- * defi-agent — A complete DeFi trading agent with Tollgate protection
+ * defi-agent — A complete DeFi trading agent with Verilock protection
  *
  * Demonstrates:
  *   - All three tiers (auto-approve, notify+veto, human approval)
@@ -20,9 +20,9 @@
  */
 
 import {
-  TollgateSigner,
-  TollgateTransactionDeniedError,
-  TollgateTokenExpiredError,
+  VerilockSigner,
+  VerilockTransactionDeniedError,
+  VerilockTokenExpiredError,
 } from '../../sdk/src/index.js';
 import type { TxRequest } from '../../sdk/src/index.js';
 
@@ -63,13 +63,13 @@ function log(msg: string) {
 }
 
 async function tryTransaction(
-  tollgate: TollgateSigner,
+  verilock: VerilockSigner,
   label: string,
   params: TxRequest,
 ) {
   log(`→ ${label}`);
   try {
-    const result = await tollgate.simulate(params);
+    const result = await verilock.simulate(params);
 
     if (result.status === 'approved') {
       log(`  ✓ APPROVED (Tier ${result.approval_token.tier}) | risk: ${result.approval_token.risk_score.toFixed(2)} | auto: ${result.approval_token.auto_approved}`);
@@ -82,9 +82,9 @@ async function tryTransaction(
       log(`  ✗ DENIED [${result.code}]: ${result.message}`);
     }
   } catch (err) {
-    if (err instanceof TollgateTransactionDeniedError) {
+    if (err instanceof VerilockTransactionDeniedError) {
       log(`  ✗ DENIED [${err.denialCode}]: ${err.denialMessage}`);
-    } else if (err instanceof TollgateTokenExpiredError) {
+    } else if (err instanceof VerilockTokenExpiredError) {
       log(`  ✗ TOKEN EXPIRED: ${err.message}`);
     } else {
       log(`  ✗ ERROR: ${err instanceof Error ? err.message : String(err)}`);
@@ -100,43 +100,43 @@ async function main() {
     throw new Error('AGENT_TOKEN is empty — paste the v1.eyJ... token from Notary startup log');
   }
 
-  log('Starting DeFi agent with Tollgate protection...');
-  const tollgate = await TollgateSigner.create(CONFIG);
-  log('✓ Connected to Tollgate Notary\n');
+  log('Starting DeFi agent with Verilock protection...');
+  const verilock = await VerilockSigner.create(CONFIG);
+  log('✓ Connected to Verilock Notary\n');
 
   // ── Test 1: Tier 1 — auto-approve ($10, below $50 threshold) ─────────────
-  await tryTransaction(tollgate, 'Small swap $10 — expect Tier 1 auto-approve', {
+  await tryTransaction(verilock, 'Small swap $10 — expect Tier 1 auto-approve', {
     to: POOL_A, value: 10_000_000n, amountUsd: 10,
     purpose: 'defi_yield_optimization',
   });
 
   // ── Test 2: Tier 2 — notify + veto ($75, between $50 and $200) ───────────
-  await tryTransaction(tollgate, 'Medium swap $75 — expect Tier 2 notify+veto', {
+  await tryTransaction(verilock, 'Medium swap $75 — expect Tier 2 notify+veto', {
     to: POOL_A, value: 75_000_000n, amountUsd: 75,
     purpose: 'defi_yield_optimization',
   });
 
   // ── Test 3: Tier 3 — human approval ($300, above $200 threshold) ──────────
-  await tryTransaction(tollgate, 'Large swap $300 — expect Tier 3 human approval', {
+  await tryTransaction(verilock, 'Large swap $300 — expect Tier 3 human approval', {
     to: POOL_A, value: 300_000_000n, amountUsd: 300,
     purpose: 'defi_yield_optimization',
   });
 
   // ── Test 4: Denied — purpose mismatch ────────────────────────────────────
-  await tryTransaction(tollgate, 'NFT purchase — expect PURPOSE_MISMATCH denial', {
+  await tryTransaction(verilock, 'NFT purchase — expect PURPOSE_MISMATCH denial', {
     to: POOL_A, value: 10_000_000n, amountUsd: 10,
     purpose: 'buy_nfts',
   });
 
   // ── Test 5: Denied — unknown destination ─────────────────────────────────
-  await tryTransaction(tollgate, 'Unknown pool — expect DESTINATION_NOT_ALLOWED denial', {
+  await tryTransaction(verilock, 'Unknown pool — expect DESTINATION_NOT_ALLOWED denial', {
     to: '0x9999990000000000000000000000000000000000' as `0x${string}`,
     value: 10_000_000n, amountUsd: 10,
     purpose: 'defi_yield_optimization',
   });
 
   // ── Test 6: Denied — exceeds per-transaction limit ────────────────────────
-  await tryTransaction(tollgate, 'Whale swap $600 — expect EXCEEDS_TRANSACTION_LIMIT denial', {
+  await tryTransaction(verilock, 'Whale swap $600 — expect EXCEEDS_TRANSACTION_LIMIT denial', {
     to: POOL_A, value: 600_000_000n, amountUsd: 600,
     purpose: 'defi_yield_optimization',
   });

@@ -2,11 +2,11 @@
 pragma solidity ^0.8.24;
 
 import {Script, console} from "forge-std/Script.sol";
-import {TollgateGuard}   from "../src/TollgateGuard.sol";
+import {VerilockGuard}   from "../src/VerilockGuard.sol";
 
 /**
  * @title  AttachGuard
- * @notice Attaches a deployed TollgateGuard to a Gnosis Safe.
+ * @notice Attaches a deployed VerilockGuard to a Gnosis Safe.
  *
  * HOW GNOSIS SAFE setGuard WORKS:
  *   setGuard() is a privileged function on the Safe contract. It can ONLY be
@@ -27,7 +27,7 @@ import {TollgateGuard}   from "../src/TollgateGuard.sol";
  *     submit via the Safe Transaction Service or execTransaction directly.
  *
  * Required environment variables:
- *   GUARD_ADDRESS   — deployed TollgateGuard address (from Deploy.s.sol output)
+ *   GUARD_ADDRESS   — deployed VerilockGuard address (from Deploy.s.sol output)
  *   SAFE_ADDRESS    — your Gnosis Safe address
  *   ATTACH_MODE     — "direct" (Anvil/test) or "multisig" (real Safe) [default: direct]
  *
@@ -58,7 +58,7 @@ contract AttachGuard is Script {
         // If the Guard was deployed with a different Safe address, attaching it
         // will succeed at the Safe level but every checkTransaction will revert
         // with OnlySafe() because the Safe address won't match.
-        TollgateGuard guard = TollgateGuard(guardAddress);
+        VerilockGuard guard = VerilockGuard(guardAddress);
         require(
             guard.safeAddress() == safeAddress,
             "AttachGuard: Guard.safeAddress() does not match SAFE_ADDRESS — deploy a new Guard for this Safe"
